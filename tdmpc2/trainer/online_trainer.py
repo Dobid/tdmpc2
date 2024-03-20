@@ -28,7 +28,30 @@ class OnlineTrainer(Trainer):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
-			obs, done, ep_reward, t = self.env.reset(), False, 0, 0
+			if self.env.unwrapped.spec.id == 'SimpleAC-v0':
+				sim_options = {
+							"atmosphere": {
+								"variable": False,
+								"severity": "light",
+								"wind": {
+									"enable": True,
+									"rand_continuous": False
+								},
+								"turb": {
+									"enable": False
+								},
+								"gust": {
+									"enable": False
+								},
+							},
+							"rand_fdm": {
+								"enable": False,
+							}
+				}
+				obs, info = self.env.reset(options=sim_options)
+				obs, info, done, ep_reward, t = obs, info, False, 0, 0
+			else:
+				obs, done, ep_reward, t = self.env.reset(), False, 0, 0
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
@@ -90,7 +113,7 @@ class OnlineTrainer(Trainer):
 					self.logger.log(train_metrics, 'train')
 					self._ep_idx = self.buffer.add(torch.cat(self._tds))
 
-				obs = self.env.reset()
+				obs, info = self.env.reset()
 				self._tds = [self.to_td(obs)]
 
 			# Collect experience

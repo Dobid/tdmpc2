@@ -1,0 +1,8 @@
+# config for PPO training of Attitude Control Task without airspeed control
+
+# parent class JSBSimEnv config
+JSBSimEnv:
+    fdm_freq: 100.0 # 120 Hz being the default JSBSim freq
+    agent_freq: 100.0
+    episode_length_s: 20.0
+    viz_time_factor: 50.0
