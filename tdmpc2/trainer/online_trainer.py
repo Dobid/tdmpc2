@@ -28,30 +28,27 @@ class OnlineTrainer(Trainer):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
-			if self.env.unwrapped.spec.id == 'SimpleAC-v0':
-				sim_options = {
-							"atmosphere": {
-								"variable": False,
-								"severity": "light",
-								"wind": {
-									"enable": True,
-									"rand_continuous": False
-								},
-								"turb": {
-									"enable": False
-								},
-								"gust": {
-									"enable": False
-								},
+			sim_options = {
+						"atmosphere": {
+							"variable": False,
+							"severity": "light",
+							"wind": {
+								"enable": True,
+								"rand_continuous": False
 							},
-							"rand_fdm": {
-								"enable": False,
-							}
-				}
-				obs, info = self.env.reset(options=sim_options)
-				obs, info, done, ep_reward, t = obs, info, False, 0, 0
-			else:
-				obs, done, ep_reward, t = self.env.reset(), False, 0, 0
+							"turb": {
+								"enable": False
+							},
+							"gust": {
+								"enable": False
+							},
+						},
+						"rand_fdm": {
+							"enable": False,
+						}
+			}
+			obs, info = self.env.reset(options=sim_options)
+			obs, info, done, ep_reward, t = obs, info, False, 0, 0
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
@@ -90,6 +87,10 @@ class OnlineTrainer(Trainer):
 	def train(self):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, True
+		# initial roll and pitch references
+		roll_limit = np.deg2rad(60)
+		pitch_limit = np.deg2rad(30)
+		a = b = 0.70
 		while self._step <= self.cfg.steps:
 
 			# Evaluate agent periodically
@@ -98,6 +99,7 @@ class OnlineTrainer(Trainer):
 
 			# Reset environment
 			if done:
+				print("**********")
 				if eval_next:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
@@ -115,6 +117,13 @@ class OnlineTrainer(Trainer):
 
 				obs, info = self.env.reset()
 				self._tds = [self.to_td(obs)]
+				roll_ref = np.random.uniform(-roll_limit, roll_limit)
+				pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
+				print(f"Env Done, new ref : roll = {roll_ref}, pitch = {pitch_ref} sampled")
+
+			# Set roll and pitch references
+			# self.env.unwrapped.set_target_state(roll_ref, pitch_ref)
+			self.env.set_target_state(roll_ref, pitch_ref)
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
