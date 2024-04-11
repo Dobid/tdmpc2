@@ -2,7 +2,8 @@
 tdmpc2/logs/
 tdmpc2/outputs/
 tdmpc2/wandb/
-tdmpc2/telemetry.csv
+tdmpc2/telemetry/
+outputs/
 
 # HPC
 nautilus/*.yaml
@@ -128,3 +129,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# vscode
+.vscode/
+tdmpc2/a.py
