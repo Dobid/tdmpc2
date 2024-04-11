@@ -226,10 +226,13 @@ class TDMPC2:
 			dict: Dictionary of training statistics.
 		"""
 		obs, action, reward, task = buffer.sample()
+		# obs: shape (horizon+1, batch_size, obs_dim), obs[0] is the current initial observation
+		# action: shape (horizon, batch_size, action_dim)
+		# reward: shape (horizon, batch_size, 1)
 	
 		# Compute targets
 		with torch.no_grad():
-			next_z = self.model.encode(obs[1:], task)
+			next_z = self.model.encode(obs[1:], task) # get the latent state of the next observations in the horizon
 			td_targets = self._td_target(next_z, reward, task)
 
 		# Prepare for update
