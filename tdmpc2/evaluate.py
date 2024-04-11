@@ -42,7 +42,6 @@ def evaluate(cfg: dict):
 	assert torch.cuda.is_available()
 	assert cfg.eval_episodes > 0, 'Must evaluate at least 1 episode.'
 	cfg = parse_cfg(cfg)
-	set_seed(cfg.seed)
 	print(colored(f'Task: {cfg.task}', 'blue', attrs=['bold']))
 	print(colored(f'Model size: {cfg.get("model_size", "default")}', 'blue', attrs=['bold']))
 	print(colored(f'Checkpoint: {cfg.checkpoint}', 'blue', attrs=['bold']))
@@ -50,6 +49,7 @@ def evaluate(cfg: dict):
 		print(colored('Warning: single-task evaluation of multi-task models is not currently supported.', 'red', attrs=['bold']))
 		print(colored('To evaluate a multi-task model, use task=mt80 or task=mt30.', 'red', attrs=['bold']))
 
+	os.chdir(hydra.utils.get_original_cwd())
 	# Make environment
 	env = make_env(cfg)
 
@@ -68,15 +68,29 @@ def evaluate(cfg: dict):
 		os.makedirs(video_dir, exist_ok=True)
 	scores = []
 	tasks = cfg.tasks if cfg.multitask else [cfg.task]
+
+	# initial roll and pitch references
+	roll_limit = np.deg2rad(60)
+	pitch_limit = np.deg2rad(30)
+
 	for task_idx, task in enumerate(tasks):
 		if not cfg.multitask:
 			task_idx = None
 		ep_rewards, ep_successes = [], []
 		for i in range(cfg.eval_episodes):
-			obs, done, ep_reward, t = env.reset(task_idx=task_idx), False, 0, 0
+			# obs, done, ep_reward, t = env.reset(task_idx=task_idx), False, 0, 0
+			obs, info = env.reset(options=cfg.JSBSimEnv.sim_options)
+			obs, info, done, ep_reward, t = obs, info, False, 0, 0
+			# roll_ref = np.random.uniform(-roll_limit, roll_limit)
+			# pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
+			roll_ref = np.deg2rad(-58)
+			pitch_ref = np.deg2rad(-28)
+			print(f"Env Done, new ref : roll = {roll_ref}, pitch = {pitch_ref} sampled")
 			if cfg.save_video:
 				frames = [env.render()]
 			while not done:
+				# Set roll and pitch references
+				env.set_target_state(roll_ref, pitch_ref)
 				action = agent.act(obs, t0=t==0, task=task_idx)
 				obs, reward, done, info = env.step(action)
 				ep_reward += reward
