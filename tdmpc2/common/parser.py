@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
 
+from common.seed import set_seed
+from numpy.random import randint
+
 import hydra
 from omegaconf import OmegaConf
 
@@ -33,6 +36,19 @@ def parse_cfg(cfg: OmegaConf) -> OmegaConf:
 						cfg[k] = int(cfg[k])
 		except:
 			pass
+
+	# add additional config in case it's my JSBSim env
+	if cfg.task == 'ACNoVaIntegErr':
+		OmegaConf.set_struct(cfg, False)
+		jsbsim_cfg = OmegaConf.load('../../../jsbsim_cfg.yaml')
+		cfg = OmegaConf.merge(cfg, jsbsim_cfg)
+
+	cfg.seed = randint(1, 1000000) if cfg.seed == -1 else cfg.seed
+	set_seed(cfg.seed)
+
+	# conf from cli
+	cli = OmegaConf.from_cli()
+	cfg = OmegaConf.merge(cfg, cli)
 
 	# Convenience
 	cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / cfg.exp_name
