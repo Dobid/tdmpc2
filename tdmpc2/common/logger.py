@@ -125,11 +125,13 @@ class Logger:
 			return
 		os.environ["WANDB_SILENT"] = "true" if cfg.wandb_silent else "false"
 		import wandb
+		exp_name = "tdmpc2_" + cfg.exp_name + "_" + str(cfg.seed)
 
 		wandb.init(
 			project=self.project,
 			entity=self.entity,
-			name=str(cfg.seed),
+			# name=str(cfg.seed),
+			name=exp_name,
 			group=self._group,
 			tags=cfg_to_group(cfg, return_list=True) + [f"seed:{cfg.seed}"],
 			dir=self._log_dir,
