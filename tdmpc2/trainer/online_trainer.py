@@ -28,26 +28,7 @@ class OnlineTrainer(Trainer):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
-			sim_options = {
-						"atmosphere": {
-							"variable": False,
-							"severity": "light",
-							"wind": {
-								"enable": True,
-								"rand_continuous": False
-							},
-							"turb": {
-								"enable": False
-							},
-							"gust": {
-								"enable": False
-							},
-						},
-						"rand_fdm": {
-							"enable": False,
-						}
-			}
-			obs, info = self.env.reset(options=sim_options)
+			obs, info = self.env.reset()
 			obs, info, done, ep_reward, t = obs, info, False, 0, 0
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))

@@ -43,9 +43,9 @@ def train(cfg: dict):
 	assert torch.cuda.is_available()
 	assert cfg.steps > 0, 'Must train for at least 1 step.'
 	cfg = parse_cfg(cfg)
-	set_seed(cfg.seed)
-	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
+	os.chdir(hydra.utils.get_original_cwd())
 
+	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
 	trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
 	trainer = trainer_cls(
 		cfg=cfg,
