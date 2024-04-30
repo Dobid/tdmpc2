@@ -44,11 +44,11 @@ def make_env(cfg):
 	"""
 	Make Myosuite environment.
 	"""
-	if not cfg.task in MYOSUITE_TASKS:
-		raise ValueError('Unknown task:', cfg.task)
-	assert cfg.obs == 'state', 'This task only supports state observations.'
+	if not cfg.rl.task in MYOSUITE_TASKS:
+		raise ValueError('Unknown task:', cfg.rl.task)
+	assert cfg.rl.obs == 'state', 'This task only supports state observations.'
 	import myosuite
-	env = gym.make(MYOSUITE_TASKS[cfg.task])
+	env = gym.make(MYOSUITE_TASKS[cfg.rl.task])
 	env = MyoSuiteWrapper(env, cfg)
 	env = TimeLimit(env, max_episode_steps=100)
 	env.max_episode_steps = env._max_episode_steps

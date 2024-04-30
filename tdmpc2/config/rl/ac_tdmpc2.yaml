@@ -1,0 +1,27 @@
+### TDMPC2 config ###
+# environment
+task: ACBohnNoVaIErr
+obs: state
+
+# training
+steps: 250_000
+eval_freq: 20_000
+eval_episodes: 1
+
+# logging
+wandb_project: tdmpc2
+wandb_entity: thesedavid
+wandb_silent: false
+disable_wandb: false
+
+# misc
+save_agent: true
+seed: ???
+render_mode: 'none'
+
+# CAPS
+use_caps: false
+ts_coef: 0.0
+
+# use mppi type planning or pi policy direct output
+mpc: true

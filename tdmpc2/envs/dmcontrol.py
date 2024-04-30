@@ -183,14 +183,14 @@ def make_env(cfg):
 	Make DMControl environment.
 	Adapted from https://github.com/facebookresearch/drqv2
 	"""
-	domain, task = cfg.task.replace('-', '_').split('_', 1)
+	domain, task = cfg.rl.task.replace('-', '_').split('_', 1)
 	domain = dict(cup='ball_in_cup', pointmass='point_mass').get(domain, domain)
 	if (domain, task) not in suite.ALL_TASKS:
 		raise ValueError('Unknown task:', task)
-	assert cfg.obs in {'state', 'rgb'}, 'This task only supports state and rgb observations.'
+	assert cfg.rl.obs in {'state', 'rgb'}, 'This task only supports state and rgb observations.'
 	env = suite.load(domain,
 					 task,
-					 task_kwargs={'random': cfg.seed},
+					 task_kwargs={'random': cfg.rl.seed},
 					 visualize_reward=False)
 	env = ActionDTypeWrapper(env, np.float32)
 	env = ActionRepeatWrapper(env, 2)

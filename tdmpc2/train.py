@@ -20,7 +20,7 @@ from common.logger import Logger
 torch.backends.cudnn.benchmark = True
 
 
-@hydra.main(config_name='config', config_path='.')
+@hydra.main(config_name='config', config_path='config')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -41,18 +41,18 @@ def train(cfg: dict):
 	```
 	"""
 	assert torch.cuda.is_available()
-	assert cfg.steps > 0, 'Must train for at least 1 step.'
-	cfg = parse_cfg(cfg)
+	assert cfg.rl.steps > 0, 'Must train for at least 1 step.'
+	cfg.rl = parse_cfg(cfg.rl)
 	os.chdir(hydra.utils.get_original_cwd())
 
-	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
-	trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
+	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.rl.work_dir)
+	trainer_cls = OfflineTrainer if cfg.rl.multitask else OnlineTrainer
 	trainer = trainer_cls(
-		cfg=cfg,
+		cfg=cfg.rl,
 		env=make_env(cfg),
-		agent=TDMPC2(cfg),
-		buffer=Buffer(cfg),
-		logger=Logger(cfg),
+		agent=TDMPC2(cfg.rl),
+		buffer=Buffer(cfg.rl),
+		logger=Logger(cfg.rl),
 	)
 	trainer.train()
 	print('\nTraining completed successfully')
