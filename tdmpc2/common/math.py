@@ -64,17 +64,19 @@ def symexp(x):
 
 
 def two_hot(x, cfg):
-	"""Converts a batch of scalars to soft two-hot encoded targets for discrete regression."""
+	"""Converts a batch of scalars to soft two-hot encoded targets for discrete regression.
+		See Dreamer v3 paper for explanation: https://arxiv.org/pdf/2301.04104.pdf p.6-7
+	"""
 	if cfg.num_bins == 0:
 		return x
 	elif cfg.num_bins == 1:
 		return symlog(x)
 	x = torch.clamp(symlog(x), cfg.vmin, cfg.vmax).squeeze(1)
-	bin_idx = torch.floor((x - cfg.vmin) / cfg.bin_size).long()
-	bin_offset = ((x - cfg.vmin) / cfg.bin_size - bin_idx.float()).unsqueeze(-1)
-	soft_two_hot = torch.zeros(x.size(0), cfg.num_bins, device=x.device)
-	soft_two_hot.scatter_(1, bin_idx.unsqueeze(1), 1 - bin_offset)
-	soft_two_hot.scatter_(1, (bin_idx.unsqueeze(1) + 1) % cfg.num_bins, bin_offset)
+	bin_idx = torch.floor((x - cfg.vmin) / cfg.bin_size).long() # get the integer idx of the bin
+	bin_offset = ((x - cfg.vmin) / cfg.bin_size - bin_idx.float()).unsqueeze(-1) # get the decimal part of the bin idx
+	soft_two_hot = torch.zeros(x.size(0), cfg.num_bins, device=x.device) # create a tensor of zeros (batch_size, num_bins)
+	soft_two_hot.scatter_(1, bin_idx.unsqueeze(1), 1 - bin_offset) # place 1 - decimal in the desired bin idx
+	soft_two_hot.scatter_(1, (bin_idx.unsqueeze(1) + 1) % cfg.num_bins, bin_offset) # place decimal in the bin idx + 1 (idx=1 if bin_idx=num_bins)
 	return soft_two_hot
 
 
