@@ -52,7 +52,7 @@ def train(cfg: dict):
 		env=make_env(cfg),
 		agent=TDMPC2(cfg.rl),
 		buffer=Buffer(cfg.rl),
-		logger=Logger(cfg.rl),
+		logger=Logger(cfg),
 	)
 	trainer.train()
 	print('\nTraining completed successfully')
