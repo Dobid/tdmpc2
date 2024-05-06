@@ -15,6 +15,17 @@ class OnlineTrainer(Trainer):
 		self._step = 0
 		self._ep_idx = 0
 		self._start_time = time()
+		# reference sequence [roll, pitch] medium/easy
+		self.ref_seq: np.ndarray = np.array([
+												[np.deg2rad(25), np.deg2rad(15)], # easy
+												[np.deg2rad(-25), np.deg2rad(-15)], 
+												[np.deg2rad(25), np.deg2rad(-15)],
+												[np.deg2rad(-25), np.deg2rad(15)],
+												[np.deg2rad(40), np.deg2rad(22)], # medium
+												[np.deg2rad(-40), np.deg2rad(-22)],
+												[np.deg2rad(40), np.deg2rad(-22)],
+												[np.deg2rad(-40), np.deg2rad(22)],
+											])
 
 	def common_metrics(self):
 		"""Return a dictionary of current metrics."""
@@ -27,14 +38,24 @@ class OnlineTrainer(Trainer):
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
+		self.cfg.eval_episodes = self.ref_seq.shape[0] # set the number of episodes to the number of reference sequences
+		init_reset = True # flag to indicate if it is the reset() call is for initialization
+		ep_obs, ep_fcs_fluct = [], [] # dicts storing the observations and fluctuation of the flight controls for an episode
 		for i in range(self.cfg.eval_episodes):
 			obs, info = self.env.reset()
+			if not init_reset:
+				ep_fcs_pos_hist = np.array(info['fcs_pos_hist'])
+				ep_fcs_fluct.append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # compute the fcs fluctuation of the episode being reset and append to the list
 			obs, info, done, ep_reward, t = obs, info, False, 0, 0
+			init_reset = False
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
+				# Set roll and pitch references
+				self.env.set_target_state(self.ref_seq[i, 0], self.ref_seq[i, 1]) # 0: roll, 1: pitch
 				action = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, info = self.env.step(action)
+				ep_obs.append(info['non_norm_obs']) # append the non-normalized observation to the list
 				ep_reward += reward
 				t += 1
 				if self.cfg.save_video:
@@ -43,9 +64,19 @@ class OnlineTrainer(Trainer):
 			ep_successes.append(info['success'])
 			if self.cfg.save_video:
 				self.logger.video.save(self._step)
+
+		all_fcs_fluct = np.mean(np.array(ep_fcs_fluct), axis=0) # compute the mean fcs fluctuation over all episodes
+		ep_obs = np.array(ep_obs)
+		roll_rmse = np.sqrt(np.mean(np.square(ep_obs[:, 6])))
+		pitch_rmse = np.sqrt(np.mean(np.square(ep_obs[:, 7])))
+
 		return dict(
 			episode_reward=np.nanmean(ep_rewards),
 			episode_success=np.nanmean(ep_successes),
+			roll_rmse=roll_rmse,
+			pitch_rmse=pitch_rmse,
+			ail_fluct=all_fcs_fluct[0],
+			ele_fluct=all_fcs_fluct[1],
 		)
 
 	def to_td(self, obs, action=None, reward=None):

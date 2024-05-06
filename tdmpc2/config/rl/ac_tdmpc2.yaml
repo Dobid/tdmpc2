@@ -4,9 +4,9 @@ task: ACBohnNoVaIErr
 obs: state
 
 # training
-steps: 250_000
-eval_freq: 20_000
-eval_episodes: 1
+steps: 750_000
+eval_freq: 37_500 # This will make 20 evaluations points
+eval_episodes: 8 # this value is overwritten by the size of the reference sequence in the code
 
 # logging
 wandb_project: tdmpc2
