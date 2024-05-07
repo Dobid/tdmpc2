@@ -2,7 +2,7 @@ from time import time
 
 import numpy as np
 import torch
-import itertools
+import pandas as pd
 from tensordict.tensordict import TensorDict
 
 from trainer.base import Trainer
@@ -20,21 +20,21 @@ class OnlineTrainer(Trainer):
 		self.ref_seq: np.ndarray = np.array([
 												[	# roll			,pitch
 													[np.deg2rad(25), np.deg2rad(15)], # easy
-													[np.deg2rad(-25), np.deg2rad(-15)],
-													[np.deg2rad(25), np.deg2rad(-15)],
-													[np.deg2rad(-25), np.deg2rad(15)]
+													# [np.deg2rad(-25), np.deg2rad(-15)],
+													# [np.deg2rad(25), np.deg2rad(-15)],
+													# [np.deg2rad(-25), np.deg2rad(15)]
 												],
 												[
 													[np.deg2rad(40), np.deg2rad(22)], # medium
-													[np.deg2rad(-40), np.deg2rad(-22)],
-													[np.deg2rad(40), np.deg2rad(-22)],
-													[np.deg2rad(-40), np.deg2rad(22)]
+													# [np.deg2rad(-40), np.deg2rad(-22)],
+													# [np.deg2rad(40), np.deg2rad(-22)],
+													# [np.deg2rad(-40), np.deg2rad(22)]
 												],
 												[
 													[np.deg2rad(55), np.deg2rad(28)], # hard
-													[np.deg2rad(-55), np.deg2rad(-28)],
-													[np.deg2rad(55), np.deg2rad(-28)],
-													[np.deg2rad(-55), np.deg2rad(28)]
+													# [np.deg2rad(-55), np.deg2rad(-28)],
+													# [np.deg2rad(55), np.deg2rad(-28)],
+													# [np.deg2rad(-55), np.deg2rad(28)]
 												]
 											])
 
@@ -113,6 +113,31 @@ class OnlineTrainer(Trainer):
 			hard_ail_fluct=hard_fcs_fluct[0],
 			hard_ele_fluct=hard_fcs_fluct[1],
 		)
+	
+
+	def log_test_traj(self):
+		"""
+			Log the trajectory telemetry of a test episode.
+			Done at the end of the training, to give an graphical idea of the agent's performance.
+		"""
+		telemetry_file = self.logger._log_dir / 'telemetry.csv'
+		obs, info = self.env.reset(options={'render_mode': 'log'})
+		obs, info, done, ep_reward, t = obs, info, False, 0, 0
+		self.env.telemetry_setup(telemetry_file)
+		roll_ref = np.deg2rad(30)
+		pitch_ref = np.deg2rad(15)
+		while not done:
+			# Set roll and pitch references
+			self.env.set_target_state(roll_ref, pitch_ref) # 0: roll, 1: pitch
+			action = self.agent.act(obs, t0=t==0, eval_mode=True)
+			obs, reward, done, info = self.env.step(action)
+			ep_reward += reward
+			t += 1
+		print(f"End of training test trajectory episode reward: {ep_reward}")
+		telemetry_df = pd.read_csv(telemetry_file)
+		telemetry_table = self.logger._wandb.Table(dataframe=telemetry_df)
+		self.logger._wandb.log({"telemetry": telemetry_table})
+
 
 	def to_td(self, obs, action=None, reward=None):
 		"""Creates a TensorDict for a new episode."""
@@ -194,5 +219,7 @@ class OnlineTrainer(Trainer):
 			self._step += 1
 
 		# Final evaluation
+		if self.cfg.final_traj:
+			self.log_test_traj()
 
 		self.logger.finish(self.agent)

@@ -33,6 +33,7 @@ rl:
     buffer_size: 1_000_000
     exp_name: default
     data_dir: ???
+    final_traj: ???
 
     # CAPS
     use_caps: false
