@@ -2,6 +2,7 @@ from time import time
 
 import numpy as np
 import torch
+import itertools
 from tensordict.tensordict import TensorDict
 
 from trainer.base import Trainer
@@ -15,16 +16,26 @@ class OnlineTrainer(Trainer):
 		self._step = 0
 		self._ep_idx = 0
 		self._start_time = time()
-		# reference sequence [roll, pitch] medium/easy
+		# reference sequence [roll, pitch] for each episode [easy, medium, hard]
 		self.ref_seq: np.ndarray = np.array([
-												[np.deg2rad(25), np.deg2rad(15)], # easy
-												[np.deg2rad(-25), np.deg2rad(-15)], 
-												[np.deg2rad(25), np.deg2rad(-15)],
-												[np.deg2rad(-25), np.deg2rad(15)],
-												[np.deg2rad(40), np.deg2rad(22)], # medium
-												[np.deg2rad(-40), np.deg2rad(-22)],
-												[np.deg2rad(40), np.deg2rad(-22)],
-												[np.deg2rad(-40), np.deg2rad(22)],
+												[	# roll			,pitch
+													[np.deg2rad(25), np.deg2rad(15)], # easy
+													[np.deg2rad(-25), np.deg2rad(-15)],
+													[np.deg2rad(25), np.deg2rad(-15)],
+													[np.deg2rad(-25), np.deg2rad(15)]
+												],
+												[
+													[np.deg2rad(40), np.deg2rad(22)], # medium
+													[np.deg2rad(-40), np.deg2rad(-22)],
+													[np.deg2rad(40), np.deg2rad(-22)],
+													[np.deg2rad(-40), np.deg2rad(22)]
+												],
+												[
+													[np.deg2rad(55), np.deg2rad(28)], # hard
+													[np.deg2rad(-55), np.deg2rad(-28)],
+													[np.deg2rad(55), np.deg2rad(-28)],
+													[np.deg2rad(-55), np.deg2rad(28)]
+												]
 											])
 
 	def common_metrics(self):
@@ -38,45 +49,69 @@ class OnlineTrainer(Trainer):
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
-		self.cfg.eval_episodes = self.ref_seq.shape[0] # set the number of episodes to the number of reference sequences
+		dif_obs = []
+		dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
+		# self.cfg.eval_episodes = self.ref_seq.shape[0] * self.ref_seq.shape[1] # set the number of episodes to the number of reference sequences (3 difficulty levels * 4 episodes per level = 12)
 		init_reset = True # flag to indicate if it is the reset() call is for initialization
-		ep_obs, ep_fcs_fluct = [], [] # dicts storing the observations and fluctuation of the flight controls for an episode
-		for i in range(self.cfg.eval_episodes):
-			obs, info = self.env.reset()
-			if not init_reset:
-				ep_fcs_pos_hist = np.array(info['fcs_pos_hist'])
-				ep_fcs_fluct.append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # compute the fcs fluctuation of the episode being reset and append to the list
-			obs, info, done, ep_reward, t = obs, info, False, 0, 0
-			init_reset = False
-			if self.cfg.save_video:
-				self.logger.video.init(self.env, enabled=(i==0))
-			while not done:
-				# Set roll and pitch references
-				self.env.set_target_state(self.ref_seq[i, 0], self.ref_seq[i, 1]) # 0: roll, 1: pitch
-				action = self.agent.act(obs, t0=t==0, eval_mode=True)
-				obs, reward, done, info = self.env.step(action)
-				ep_obs.append(info['non_norm_obs']) # append the non-normalized observation to the list
-				ep_reward += reward
-				t += 1
+		i = 0
+		for dif_idx, ref_dif in enumerate(self.ref_seq): # iterate over the difficulty levels
+			dif_obs.append([])
+			dif_fcs_fluct.append([])
+			for ref_idx, ref_ep in enumerate(ref_dif): # iterate over the ref for 1 episode
+				obs, info = self.env.reset()
+				obs, info, done, ep_reward, t = obs, info, False, 0, 0
 				if self.cfg.save_video:
-					self.logger.video.record(self.env)
-			ep_rewards.append(ep_reward)
-			ep_successes.append(info['success'])
-			if self.cfg.save_video:
-				self.logger.video.save(self._step)
+					self.logger.video.init(self.env, enabled=(i==0))
+				while not done:
+					# Set roll and pitch references
+					self.env.set_target_state(ref_ep[0], ref_ep[1]) # 0: roll, 1: pitch
+					action = self.agent.act(obs, t0=t==0, eval_mode=True)
+					obs, reward, done, info = self.env.step(action)
+					dif_obs[dif_idx].append(info['non_norm_obs']) # append the non-normalized observation to the list
+					ep_reward += reward
+					t += 1
+					if self.cfg.save_video:
+						self.logger.video.record(self.env)
 
-		all_fcs_fluct = np.mean(np.array(ep_fcs_fluct), axis=0) # compute the mean fcs fluctuation over all episodes
-		ep_obs = np.array(ep_obs)
-		roll_rmse = np.sqrt(np.mean(np.square(ep_obs[:, 6])))
-		pitch_rmse = np.sqrt(np.mean(np.square(ep_obs[:, 7])))
+				ep_fcs_pos_hist = np.array(info['fcs_pos_hist'])
+				dif_fcs_fluct[dif_idx].append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # compute the fcs fluctuation of the episode being reset and append to the list
+
+				ep_rewards.append(ep_reward)
+				ep_successes.append(info['success'])
+				if self.cfg.save_video:
+					self.logger.video.save(self._step)
+				i += 1
+		
+		# computing the mean fcs fluctuation across all episodes for each difficulty level
+		dif_fcs_fluct = np.array(dif_fcs_fluct)
+		easy_fcs_fluct = np.mean(np.array(dif_fcs_fluct[0]), axis=0)
+		medium_fcs_fluct = np.mean(np.array(dif_fcs_fluct[1]), axis=0)
+		hard_fcs_fluct = np.mean(np.array(dif_fcs_fluct[2]), axis=0)
+
+		# computing the rmse of the roll and pitch angles across all episodes for each difficulty level
+		dif_obs = np.array(dif_obs)
+		easy_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[0, :, 6])))
+		easy_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[0, :, 7])))
+		medium_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[1, :, 6])))
+		medium_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[1, :, 7])))
+		hard_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, 6])))
+		hard_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, 7])))
 
 		return dict(
 			episode_reward=np.nanmean(ep_rewards),
 			episode_success=np.nanmean(ep_successes),
-			roll_rmse=roll_rmse,
-			pitch_rmse=pitch_rmse,
-			ail_fluct=all_fcs_fluct[0],
-			ele_fluct=all_fcs_fluct[1],
+			easy_roll_rmse=easy_roll_rmse,
+			easy_pitch_rmse=easy_pitch_rmse,
+			medium_roll_rmse=medium_roll_rmse,
+			medium_pitch_rmse=medium_pitch_rmse,
+			hard_roll_rmse=hard_roll_rmse,
+			hard_pitch_rmse=hard_pitch_rmse,
+			easy_ail_fluct=easy_fcs_fluct[0],
+			easy_ele_fluct=easy_fcs_fluct[1],
+			medium_ail_fluct=medium_fcs_fluct[0],
+			medium_ele_fluct=medium_fcs_fluct[1],
+			hard_ail_fluct=hard_fcs_fluct[0],
+			hard_ele_fluct=hard_fcs_fluct[1],
 		)
 
 	def to_td(self, obs, action=None, reward=None):
@@ -157,5 +192,7 @@ class OnlineTrainer(Trainer):
 				train_metrics.update(_train_metrics)
 
 			self._step += 1
-	
+
+		# Final evaluation
+
 		self.logger.finish(self.agent)
