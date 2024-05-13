@@ -20,21 +20,21 @@ class OnlineTrainer(Trainer):
 		self.ref_seq: np.ndarray = np.array([
 												[	# roll			,pitch
 													[np.deg2rad(25), np.deg2rad(15)], # easy
-													# [np.deg2rad(-25), np.deg2rad(-15)],
-													# [np.deg2rad(25), np.deg2rad(-15)],
-													# [np.deg2rad(-25), np.deg2rad(15)]
+													[np.deg2rad(-25), np.deg2rad(-15)],
+													[np.deg2rad(25), np.deg2rad(-15)],
+													[np.deg2rad(-25), np.deg2rad(15)]
 												],
 												[
 													[np.deg2rad(40), np.deg2rad(22)], # medium
-													# [np.deg2rad(-40), np.deg2rad(-22)],
-													# [np.deg2rad(40), np.deg2rad(-22)],
-													# [np.deg2rad(-40), np.deg2rad(22)]
+													[np.deg2rad(-40), np.deg2rad(-22)],
+													[np.deg2rad(40), np.deg2rad(-22)],
+													[np.deg2rad(-40), np.deg2rad(22)]
 												],
 												[
 													[np.deg2rad(55), np.deg2rad(28)], # hard
-													# [np.deg2rad(-55), np.deg2rad(-28)],
-													# [np.deg2rad(55), np.deg2rad(-28)],
-													# [np.deg2rad(-55), np.deg2rad(28)]
+													[np.deg2rad(-55), np.deg2rad(-28)],
+													[np.deg2rad(55), np.deg2rad(-28)],
+													[np.deg2rad(-55), np.deg2rad(28)]
 												]
 											])
 

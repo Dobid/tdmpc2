@@ -80,7 +80,8 @@ def evaluate(cfg: dict):
 		if not cfg.rl.multitask:
 			task_idx = None
 		ep_rewards, ep_successes = [], []
-		for i in range(cfg.rl.eval_episodes):
+		# for i in range(cfg.rl.eval_episodes):
+		for i in range(0,1):
 			# obs, done, ep_reward, t = env.reset(task_idx=task_idx), False, 0, 0
 			obs, info = env.reset(options=cfg.env.jsbsim.eval_sim_options)
 			obs, info, done, ep_reward, t = obs, info, False, 0, 0
