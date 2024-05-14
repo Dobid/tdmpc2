@@ -172,7 +172,7 @@ class OnlineTrainer(Trainer):
 			# Reset environment
 			if done:
 				print("**********")
-				if eval_next:
+				if eval_next and self.cfg.periodic_eval:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
 					self.logger.log(eval_metrics, 'eval')
@@ -218,8 +218,8 @@ class OnlineTrainer(Trainer):
 
 			self._step += 1
 
-		# Final evaluation
-		if self.cfg.final_traj:
+		# Final plot of a trajectory into wandb
+		if self.cfg.final_traj_plot:
 			self.log_test_traj()
 
 		self.logger.finish(self.agent)

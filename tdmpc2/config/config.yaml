@@ -13,6 +13,7 @@ rl:
 
     # evaluation
     checkpoint: ???
+    periodic_eval: true
     eval_episodes: 10
     eval_freq: 50000
 
