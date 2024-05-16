@@ -6,10 +6,15 @@ obs: state
 # training
 steps: 750_000
 
+# eval during training
 periodic_eval: true
 eval_freq: 37_500 # This will make 20 evaluations points
 eval_episodes: ??? # this value is overwritten by the size of the reference sequence in the code
 final_traj_plot: true # simulate a final trajectory at the end of training (for visualization + log in wandb)
+
+# standalone eval
+ref_file: simple_easy
+res_file: test
 
 # logging
 wandb_project: tdmpc2

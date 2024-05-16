@@ -52,7 +52,6 @@ class OnlineTrainer(Trainer):
 		dif_obs = []
 		dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
 		# self.cfg.eval_episodes = self.ref_seq.shape[0] * self.ref_seq.shape[1] # set the number of episodes to the number of reference sequences (3 difficulty levels * 4 episodes per level = 12)
-		init_reset = True # flag to indicate if it is the reset() call is for initialization
 		i = 0
 		for dif_idx, ref_dif in enumerate(self.ref_seq): # iterate over the difficulty levels
 			dif_obs.append([])
