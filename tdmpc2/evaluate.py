@@ -87,7 +87,7 @@ def evaluate(cfg: dict):
 			obs, info, done, ep_reward, t = obs, info, False, 0, 0
 			# roll_ref = np.random.uniform(-roll_limit, roll_limit)
 			# pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-			roll_ref = np.deg2rad(25) # 25
+			roll_ref = np.deg2rad(30) # 25
 			pitch_ref = np.deg2rad(15) # 15
 			print(f"Env Done, new ref : roll = {roll_ref}, pitch = {pitch_ref} sampled")
 			if cfg.rl.save_video:
