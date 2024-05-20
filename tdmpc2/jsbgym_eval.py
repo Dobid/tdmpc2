@@ -71,7 +71,7 @@ def eval(cfg: DictConfig):
         cfg_sim.eval_sim_options.atmosphere.severity = severity
         e_obs = []
         eps_fcs_fluct = []
-        print(f"********** PPO METRICS {severity} **********")
+        print(f"********** TDMPC2 METRICS {severity} **********")
         obs, _ = env.reset(options=cfg_sim.eval_sim_options)
         ep_cnt = 0 # episode counter
         ep_step = 0 # step counter within an episode
