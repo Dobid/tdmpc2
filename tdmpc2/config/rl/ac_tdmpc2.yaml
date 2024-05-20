@@ -17,7 +17,7 @@ ref_file: simple_easy
 res_file: test
 
 # logging
-wandb_project: tdmpc2
+wandb_project: uav_rl
 wandb_entity: thesedavid
 wandb_silent: false
 disable_wandb: false
