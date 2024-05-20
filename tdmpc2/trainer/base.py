@@ -1,8 +1,9 @@
 class Trainer:
 	"""Base trainer class for TD-MPC2."""
 
-	def __init__(self, cfg, env, agent, buffer, logger):
+	def __init__(self, cfg, cfg_all, env, agent, buffer, logger):
 		self.cfg = cfg
+		self.cfg_all = cfg_all
 		self.env = env
 		self.agent = agent
 		self.buffer = buffer

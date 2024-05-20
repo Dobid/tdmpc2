@@ -37,6 +37,18 @@ class OnlineTrainer(Trainer):
 													[np.deg2rad(-55), np.deg2rad(28)]
 												]
 											])
+		
+		# self.ref_seq: np.ndarray = np.array([
+		# 										[	# roll			,pitch
+		# 											[np.deg2rad(25), np.deg2rad(15)], # easy
+		# 										],
+		# 										[
+		# 											[np.deg2rad(40), np.deg2rad(22)], # medium
+		# 										],
+		# 										[
+		# 											[np.deg2rad(55), np.deg2rad(28)], # hard
+		# 										]
+		# 									])
 
 	def common_metrics(self):
 		"""Return a dictionary of current metrics."""
@@ -57,7 +69,7 @@ class OnlineTrainer(Trainer):
 			dif_obs.append([])
 			dif_fcs_fluct.append([])
 			for ref_idx, ref_ep in enumerate(ref_dif): # iterate over the ref for 1 episode
-				obs, info = self.env.reset()
+				obs, info = self.env.reset(self.cfg_all.env.jsbsim.eval_sim_options)
 				obs, info, done, ep_reward, t = obs, info, False, 0, 0
 				if self.cfg.save_video:
 					self.logger.video.init(self.env, enabled=(i==0))
@@ -120,7 +132,7 @@ class OnlineTrainer(Trainer):
 			Done at the end of the training, to give an graphical idea of the agent's performance.
 		"""
 		telemetry_file = self.logger._log_dir / 'telemetry.csv'
-		obs, info = self.env.reset(options={'render_mode': 'log'})
+		obs, info = self.env.reset(options={'render_mode': 'log'}+self.cfg_all.env.jsbsim.eval_sim_options)
 		obs, info, done, ep_reward, t = obs, info, False, 0, 0
 		self.env.telemetry_setup(telemetry_file)
 		roll_ref = np.deg2rad(30)
@@ -186,7 +198,8 @@ class OnlineTrainer(Trainer):
 					self.logger.log(train_metrics, 'train')
 					self._ep_idx = self.buffer.add(torch.cat(self._tds))
 
-				obs, info = self.env.reset()
+				# reset the environment with training options
+				obs, info = self.env.reset(options=self.cfg_all.env.jsbsim.train_sim_options)
 				self._tds = [self.to_td(obs)]
 				roll_ref = np.random.uniform(-roll_limit, roll_limit)
 				pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
