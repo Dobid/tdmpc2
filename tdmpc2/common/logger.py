@@ -133,10 +133,14 @@ class Logger:
 			# name=str(cfg.seed),
 			name=exp_name,
 			group=self._group,
-			tags=cfg_to_group(cfg.rl, return_list=True) + [f"seed:{cfg.rl.seed}"],
+			# tags=cfg_to_group(cfg.rl, return_list=True) + [f"seed:{cfg.rl.seed}"],
+			tags=["tdmpc2", cfg.rl.task],
 			dir=self._log_dir,
 			config=OmegaConf.to_container(cfg, resolve=True),
 		)
+		wandb.define_metric("global_step")
+		wandb.define_metric("charts/*", step_metric="global_step")
+		wandb.define_metric("eval/*", step_metric="global_step")
 		print(colored("Logs will be synced with wandb.", "blue", attrs=["bold"]))
 		self._wandb = wandb
 		self._video = (
@@ -231,8 +235,11 @@ class Logger:
 				xkey = "iteration"
 			_d = dict()
 			for k, v in d.items():
+				if k == "episode_reward" and category == "train":
+					_d["charts/episodic_return"] = v
 				_d[category + "/" + k] = v
 			self._wandb.log(_d, step=d[xkey])
+			self._wandb.log({"global_step": d[xkey]})
 		if category == "eval" and self._save_csv:
 			keys = ["step", "episode_reward"]
 			self._eval.append(np.array([d[keys[0]], d[keys[1]]]))
