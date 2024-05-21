@@ -141,6 +141,7 @@ class Logger:
 		wandb.define_metric("global_step")
 		wandb.define_metric("charts/*", step_metric="global_step")
 		wandb.define_metric("eval/*", step_metric="global_step")
+		wandb.define_metric("train/*", step_metric="global_step")
 		print(colored("Logs will be synced with wandb.", "blue", attrs=["bold"]))
 		self._wandb = wandb
 		self._video = (
@@ -238,8 +239,7 @@ class Logger:
 				if k == "episode_reward" and category == "train":
 					_d["charts/episodic_return"] = v
 				_d[category + "/" + k] = v
-			self._wandb.log(_d, step=d[xkey])
-			self._wandb.log({"global_step": d[xkey]})
+			self._wandb.log(_d)
 		if category == "eval" and self._save_csv:
 			keys = ["step", "episode_reward"]
 			self._eval.append(np.array([d[keys[0]], d[keys[1]]]))
