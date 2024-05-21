@@ -37,6 +37,10 @@ def eval(cfg: DictConfig):
     # load the reference sequence and initialize the evaluation arrays
     simple_ref_data = np.load(f'eval/refs/{cfg_rl.ref_file}.npy')
 
+    # load the jsbsim seeds to apply at each reset and set the first seed
+    jsbsim_seeds = np.load(f'eval/refs/jsbsim_seeds.npy')
+    cfg_sim.eval_sim_options.seed = float(jsbsim_seeds[0])
+
     # set default target values
     # roll_ref: float = np.deg2rad(58)
     # pitch_ref: float = np.deg2rad(28)
@@ -99,7 +103,7 @@ def eval(cfg: DictConfig):
                 print(f"Episode reward: {info['episode']['r']}")
                 print(f"******* {step}/{total_steps} *******")
                 # break
-                obs, last_info = env.reset()
+                obs, last_info = env.reset(options={"seed": float(jsbsim_seeds[ep_cnt])})
                 ep_fcs_pos_hist = np.array(last_info["fcs_pos_hist"]) # get fcs pos history of the finished episode
                 eps_fcs_fluct.append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # get fcs fluctuation of the episode and append it to the list of all fcs fluctuations
                 if ep_cnt < len(simple_ref_data):
