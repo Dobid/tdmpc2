@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import pandas as pd
 from tensordict.tensordict import TensorDict
+from omegaconf import OmegaConf
 
 from trainer.base import Trainer
 
@@ -63,7 +64,6 @@ class OnlineTrainer(Trainer):
 		ep_rewards, ep_successes = [], []
 		dif_obs = []
 		dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
-		# self.cfg.eval_episodes = self.ref_seq.shape[0] * self.ref_seq.shape[1] # set the number of episodes to the number of reference sequences (3 difficulty levels * 4 episodes per level = 12)
 		i = 0
 		for dif_idx, ref_dif in enumerate(self.ref_seq): # iterate over the difficulty levels
 			dif_obs.append([])
@@ -132,7 +132,7 @@ class OnlineTrainer(Trainer):
 			Done at the end of the training, to give an graphical idea of the agent's performance.
 		"""
 		telemetry_file = self.logger._log_dir / 'telemetry.csv'
-		obs, info = self.env.reset(options={'render_mode': 'log'}+self.cfg_all.env.jsbsim.eval_sim_options)
+		obs, info = self.env.reset(options={'render_mode': 'log'} | OmegaConf.to_container(self.cfg_all.env.jsbsim.eval_sim_options, resolve=True))
 		obs, info, done, ep_reward, t = obs, info, False, 0, 0
 		self.env.telemetry_setup(telemetry_file)
 		roll_ref = np.deg2rad(30)
@@ -183,6 +183,7 @@ class OnlineTrainer(Trainer):
 			# Reset environment
 			if done:
 				print("**********")
+				self.logger._wandb.log({"global_step": self._step})
 				if eval_next and self.cfg.periodic_eval:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
