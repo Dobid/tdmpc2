@@ -132,6 +132,7 @@ class OnlineTrainer(Trainer):
 			Done at the end of the training, to give an graphical idea of the agent's performance.
 		"""
 		telemetry_file = self.logger._log_dir / 'telemetry.csv'
+		self.cfg_all.env.jsbsim.eval_sim_options.seed = 10
 		obs, info = self.env.reset(options={'render_mode': 'log'} | OmegaConf.to_container(self.cfg_all.env.jsbsim.eval_sim_options, resolve=True))
 		obs, info, done, ep_reward, t = obs, info, False, 0, 0
 		self.env.telemetry_setup(telemetry_file)
