@@ -24,9 +24,9 @@ train_sim_options:
 
 # JSBSim simulation env options - eval
 eval_sim_options:
-    seed: 10
+    seed: ???
     atmosphere:
-        severity: "severe"
+        severity: "all"
         variable: False
         wind:
             enable: True
@@ -37,4 +37,3 @@ eval_sim_options:
             enable: True
     rand_fdm:
         enable: False
-
