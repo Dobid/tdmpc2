@@ -6,6 +6,7 @@ viz_time_factor: 50.0
 debug: True
 render_mode: "none"
 
+# settings for env with light constant wind and all turbulence levels
 # JSBSim simulation env options - train
 train_sim_options:
     seed: ???
@@ -14,11 +15,12 @@ train_sim_options:
         variable: True
         wind:
             enable: True
-            rand_continuous: True
+            wind_severity: light
+            rand_continuous: False
         turb:
             enable: True
         gust:
-            enable: True
+            enable: False
     rand_fdm:
         enable: False
 
@@ -26,14 +28,15 @@ train_sim_options:
 eval_sim_options:
     seed: ???
     atmosphere:
-        severity: "severe"
+        severity: all
         variable: False
         wind:
             enable: True
+            wind_severity: light
             rand_continuous: False
         turb:
             enable: True
         gust:
-            enable: True
+            enable: False
     rand_fdm:
         enable: False
