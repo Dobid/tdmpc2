@@ -1,0 +1,2 @@
+severity,roll_rmse,pitch_rmse,roll_fcs_fluct,pitch_fcs_fluct,avg_rmse,avg_fcs_fluct
+off,0.0684427,0.035457842,0.005244086354930178,0.005423999299680643,0.051950272,0.005334042827305411
