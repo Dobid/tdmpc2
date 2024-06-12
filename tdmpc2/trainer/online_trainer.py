@@ -172,9 +172,8 @@ class OnlineTrainer(Trainer):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, True
 		# initial roll and pitch references
-		roll_limit = np.deg2rad(60)
-		pitch_limit = np.deg2rad(30)
-		a = b = 0.70
+		roll_limit = np.deg2rad(self.cfg_all.roll_limit)
+		pitch_limit = np.deg2rad(self.cfg_all.pitch_limit)
 		while self._step <= self.cfg.steps:
 
 			# Evaluate agent periodically
@@ -205,7 +204,7 @@ class OnlineTrainer(Trainer):
 				self._tds = [self.to_td(obs)]
 				roll_ref = np.random.uniform(-roll_limit, roll_limit)
 				pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-				print(f"Env Done, new ref : roll = {roll_ref}, pitch = {pitch_ref} sampled")
+				print(f"Env Done, new ref : roll = {np.deg2rad(roll_ref)}, pitch = {np.deg2rad(pitch_ref)} sampled")
 
 			# Set roll and pitch references
 			# self.env.unwrapped.set_target_state(roll_ref, pitch_ref)
