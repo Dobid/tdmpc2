@@ -78,6 +78,8 @@ rl:
     dropout: 0.01
     simnorm_dim: 8
 
+    stochastic_enc: false
+
     # logging
     wandb_project: ???
     wandb_entity: ???
