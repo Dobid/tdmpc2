@@ -92,7 +92,7 @@ class TDMPC2:
 		return a.cpu()
 
 	@torch.no_grad()
-	def _estimate_value(self, z, actions, task, eval_mode=False):
+	def _estimate_value(self, z, actions, task):
 		"""Estimate value of a trajectory starting at latent state z and executing given actions."""
 		G, discount = 0, 1
 		for t in range(self.cfg.horizon):
@@ -100,7 +100,7 @@ class TDMPC2:
 			z = self.model.next(z, actions[t], task)
 			G += discount * reward
 			discount *= self.discount[torch.tensor(task)] if self.cfg.multitask else self.discount
-		return G + discount * self.model.Q(z, self.model.pi(z, task)[int(not eval_mode)], task, return_type='avg')
+		return G + discount * self.model.Q(z, self.model.pi(z, task)[1], task, return_type='avg')
 
 	@torch.no_grad()
 	def plan(self, z, t0=False, eval_mode=False, task=None):
@@ -121,9 +121,9 @@ class TDMPC2:
 			pi_actions = torch.empty(self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
 			_z = z.repeat(self.cfg.num_pi_trajs, 1)
 			for t in range(self.cfg.horizon-1):
-				pi_actions[t] = self.model.pi(_z, task)[int(not eval_mode)]
+				pi_actions[t] = self.model.pi(_z, task)[1]
 				_z = self.model.next(_z, pi_actions[t], task)
-			pi_actions[-1] = self.model.pi(_z, task)[int(not eval_mode)]
+			pi_actions[-1] = self.model.pi(_z, task)[1]
 
 		# Initialize state and parameters
 		z = z.repeat(self.cfg.num_samples, 1)
@@ -146,7 +146,7 @@ class TDMPC2:
 				actions = actions * self.model._action_masks[task]
 
 			# Compute elite actions
-			value = self._estimate_value(z, actions, task, eval_mode).nan_to_num_(0)
+			value = self._estimate_value(z, actions, task).nan_to_num_(0)
 			elite_idxs = torch.topk(value.squeeze(1), self.cfg.num_elites, dim=0).indices
 			elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs] # elite_values.shape = (64, 1); elite_actions.shape = (horizon, 64, 2)
 
