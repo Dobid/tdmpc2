@@ -183,7 +183,8 @@ class OnlineTrainer(Trainer):
 			# Reset environment
 			if done:
 				print("**********")
-				self.logger._wandb.log({"global_step": self._step})
+				if self.logger._wandb:
+					self.logger._wandb.log({"global_step": self._step})
 				if eval_next and self.cfg.periodic_eval:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
