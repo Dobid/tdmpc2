@@ -47,10 +47,12 @@ def train(cfg: dict):
 
 	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.rl.work_dir)
 	trainer_cls = OfflineTrainer if cfg.rl.multitask else OnlineTrainer
+	env = make_env(cfg)
+	cfg = update_cfg(cfg)
 	trainer = trainer_cls(
 		cfg=cfg.rl,
 		cfg_all=cfg,
-		env=make_env(cfg),
+		env=env,
 		agent=TDMPC2(cfg.rl),
 		buffer=Buffer(cfg.rl),
 		logger=Logger(cfg),
@@ -58,6 +60,15 @@ def train(cfg: dict):
 	trainer.train()
 	print('\nTraining completed successfully')
 
+def update_cfg(cfg):
+	# if we don't use the encoder, therefore no latent space, so latent_dim = obs dimension
+	if not cfg.rl.use_enc:
+		cfg.rl.latent_dim = cfg.rl.obs_shape['state'][0]
+		cfg.rl.simnorm_dim = 7 # adjust this based on the observation space
+	# if not using CAPS loss, set ts_coef to 0
+	if not cfg.rl.use_caps:
+		cfg.rl.ts_coef = 0
+	return cfg
 
 if __name__ == '__main__':
 	train()

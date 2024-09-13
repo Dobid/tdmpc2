@@ -194,8 +194,6 @@ class TDMPC2:
 			act = self.model.pi(zs[:-1], task)[0]
 			next_act = self.model.pi(zs[1:], task)[0]
 			ts_loss = F.mse_loss(act, next_act)
-		else: # set the coef to 0 and keep the loss to 0 to ensure there's no effect in the total pi_loss
-			self.cfg.ts_coef = 0
 
 		# Loss is a weighted sum of Q-values
 		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
