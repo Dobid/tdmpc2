@@ -21,8 +21,18 @@ class WorldModel(nn.Module):
 			self._action_masks = torch.zeros(len(cfg.tasks), cfg.action_dim)
 			for i in range(len(cfg.tasks)):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
-		self._encoder = layers.enc(cfg)
-		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+
+		if self.cfg.use_enc:
+			self._encoder = layers.enc(cfg)
+		else: # no encoder, just identity in a module dict with key 'state'
+			self._encoder = nn.ModuleDict({'state': nn.Identity()})
+
+		if self.cfg.gaussian_dyn:
+			# mlps with 2x output size for mean and log_std
+			self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.latent_dim, act=layers.SimNorm(cfg))
+		else:
+			self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+
 		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
 		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim)
 		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
@@ -89,6 +99,21 @@ class WorldModel(nn.Module):
 		elif emb.shape[0] == 1:
 			emb = emb.repeat(x.shape[0], 1)
 		return torch.cat([x, emb], dim=-1)
+	
+	def sample_gaussian_nn(self, nn_out):
+		"""	
+		Takes the output of a neural network predicting the mean and log_std of a Gaussian distribution,
+		applies scaling and squashing functions and returns a rsample of the distribution.
+		!! Doesn't support multitask !!
+		"""
+		mu, log_std = nn_out.chunk(2, dim=-1)
+		log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
+		normal_dist = torch.distributions.Normal(mu, log_std.exp())
+		sample = normal_dist.rsample() # reparametrization trick
+		logprob = normal_dist.log_prob(sample).sum(-1, keepdim=True)
+		mu, sample, logprob = math.squash(mu, sample, logprob)
+		return sample, logprob, mu
+
 
 	def encode(self, obs, task):
 		"""
@@ -108,7 +133,13 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 		z = torch.cat([z, a], dim=-1)
-		return self._dynamics(z)
+		dyna_out = self._dynamics(z)
+		# Sample from Gaussian distribution if stochastic dynamics model
+		if self.cfg.gaussian_dyn:
+			z_next, _, __ = self.sample_gaussian_nn(dyna_out)
+		else: # else just take the direct output of the deterministic dynamics model
+			z_next = dyna_out
+		return z_next
 	
 	def reward(self, z, a, task):
 		"""

@@ -107,24 +107,6 @@ class NormedLinear(nn.Linear):
 			f"act={self.act.__class__.__name__})"
 
 
-class StochasticLinear(NormedLinear):
-	"""
-	Linear layer outputting the parameters of a Gaussian distribution.
-	"""
-
-	def __init__(self, *args, dropout=0., act=nn.Mish(inplace=True), **kwargs):
-		super().__init__(*args, dropout=dropout, act=act, **kwargs)
-		self.in_dims = self.in_features
-		self.out_dims = self.out_features // 2 # we div by 2 because output is comprised of mean and log_std
-
-	def forward(self, x):
-		out = super().forward(x)
-		means, log_stds = out[..., :self.out_dims], out[..., -self.out_dims:]
-		normal_dist = torch.distributions.Normal(means, log_stds.exp())
-		sampled_out = normal_dist.rsample()
-		return sampled_out
-
-
 def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
 	"""
 	Basic building block of TD-MPC2.
@@ -137,22 +119,6 @@ def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
 	for i in range(len(dims) - 2):
 		mlp.append(NormedLinear(dims[i], dims[i+1], dropout=dropout*(i==0)))
 	mlp.append(NormedLinear(dims[-2], dims[-1], act=act) if act else nn.Linear(dims[-2], dims[-1]))
-	return nn.Sequential(*mlp)
-
-
-def stochastic_mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
-	"""
-	Basic building block of TD-MPC2.
-	MLP with LayerNorm, Mish activations, and optionally dropout.
-	Stochastic version, outputting the parameters of a Gaussian distribution.
-	"""
-	if isinstance(mlp_dims, int):
-		mlp_dims = [mlp_dims]
-	dims = [in_dim] + mlp_dims + [out_dim]
-	mlp = nn.ModuleList()
-	for i in range(len(dims) - 2):
-		mlp.append(NormedLinear(dims[i], dims[i+1], dropout=dropout*(i==0)))
-	mlp.append(StochasticLinear(dims[-2], dims[-1]*2, act=act) if act else nn.Linear(dims[-2], dims[-1]*2))
 	return nn.Sequential(*mlp)
 
 
@@ -179,10 +145,7 @@ def enc(cfg, out={}):
 	"""
 	for k in cfg.obs_shape.keys():
 		if k == 'state':
-			if cfg.stochastic_enc:
-				out[k] = stochastic_mlp(cfg.obs_shape[k][0], max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
-			else:
-				out[k] = mlp(cfg.obs_shape[k][0] + cfg.task_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
+			out[k] = mlp(cfg.obs_shape[k][0] + cfg.task_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
 		elif k == 'rgb':
 			out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
 		else:

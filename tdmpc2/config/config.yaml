@@ -69,16 +69,17 @@ rl:
     # architecture
     model_size: ???
     num_enc_layers: 2
+    use_enc: true
     enc_dim: 256
+    latent_dim: 512
     num_channels: 32
     mlp_dim: 512
-    latent_dim: 512
     task_dim: 96
     num_q: 5
     dropout: 0.01
     simnorm_dim: 8
 
-    stochastic_enc: false
+    gaussian_dyn: false
 
     # logging
     wandb_project: ???

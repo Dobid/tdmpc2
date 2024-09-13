@@ -11,8 +11,9 @@ def soft_ce(pred, target, cfg):
 
 @torch.jit.script
 def log_std(x, low, dif):
+	"""Squashes the logstd between [-1, 1] with the tanh and scale it to be between `logstd_min` and `logstd_max`.
+	This ensures that the logstd is within a reasonable range, preventing it from being too large or too small."""
 	return low + 0.5 * dif * (torch.tanh(x) + 1)
-
 
 @torch.jit.script
 def _gaussian_residual(eps, log_std):
