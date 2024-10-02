@@ -65,6 +65,8 @@ def update_cfg(cfg):
 	if not cfg.rl.use_enc:
 		cfg.rl.latent_dim = cfg.rl.obs_shape['state'][0]
 		cfg.rl.simnorm_dim = 7 # adjust this based on the observation space
+	if cfg.rl.latent_dim == 14:
+		cfg.rl.simnorm_dim = 7
 	# if not using CAPS loss, set ts_coef to 0
 	if not cfg.rl.use_caps:
 		cfg.rl.ts_coef = 0

@@ -20,6 +20,7 @@ class TDMPC2:
 		self.model = WorldModel(cfg).to(self.device)
 		self.optim = torch.optim.Adam([
 			{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+			{'params': self.model._decoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 			{'params': self.model._dynamics.parameters()},
 			{'params': self.model._reward.parameters()},
 			{'params': self.model._Qs.parameters()},
@@ -239,12 +240,19 @@ class TDMPC2:
 	
 		# Compute targets
 		with torch.no_grad():
-			next_z = self.model.encode(obs[1:], task) # get the latent state of the next observations in the horizon
+			z_buf = self.model.encode(obs, task) # get the latent state of the next observations in the horizon
+			next_z = z_buf[1:]
 			td_targets = self._td_target(next_z, reward, task)
 
 		# Prepare for update
 		self.optim.zero_grad(set_to_none=True)
 		self.model.train()
+
+		# Decoder loss, in case it's separated from the forward horizon loss
+		decoder_loss = 0
+		if self.cfg.use_decoder:
+			obs_pred = self.model.decode(z_buf, task)
+			decoder_loss = F.mse_loss(obs_pred, obs)
 
 		# Latent rollout
 		zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
@@ -268,10 +276,12 @@ class TDMPC2:
 			for q in range(self.cfg.num_q):
 				value_loss += math.soft_ce(qs[q][t], td_targets[t], self.cfg).mean() * self.cfg.rho**t
 		consistency_loss *= (1/self.cfg.horizon)
+		decoder_loss *= (1/self.cfg.horizon+1)
 		reward_loss *= (1/self.cfg.horizon)
 		value_loss *= (1/(self.cfg.horizon * self.cfg.num_q))
 		total_loss = (
 			self.cfg.consistency_coef * consistency_loss +
+			self.cfg.decoder_coef * decoder_loss +
 			self.cfg.reward_coef * reward_loss +
 			self.cfg.value_coef * value_loss
 		)
@@ -291,6 +301,7 @@ class TDMPC2:
 		self.model.eval()
 		return {
 			"consistency_loss": float(consistency_loss.mean().item()),
+			"decoder_loss": float(decoder_loss.mean().item()),
 			"reward_loss": float(reward_loss.mean().item()),
 			"value_loss": float(value_loss.mean().item()),
 			"pi_loss": pi_loss,

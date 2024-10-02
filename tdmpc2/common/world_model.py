@@ -27,6 +27,10 @@ class WorldModel(nn.Module):
 		else: # no encoder, just identity in a module dict with key 'state'
 			self._encoder = nn.ModuleDict({'state': nn.Identity()})
 
+		if self.cfg.use_decoder:
+			self._decoder = layers.mlp(cfg.latent_dim , max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim],
+										cfg.obs_shape['state'][0] + cfg.task_dim, act=None)
+
 		if self.cfg.gaussian_dyn:
 			# mlps with 2x output size for mean and log_std
 			self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.latent_dim, act=layers.SimNorm(cfg))
@@ -125,6 +129,16 @@ class WorldModel(nn.Module):
 		if self.cfg.obs == 'rgb' and obs.ndim == 5:
 			return torch.stack([self._encoder[self.cfg.obs](o) for o in obs])
 		return self._encoder[self.cfg.obs](obs)
+
+
+	def decode(self, z, task):
+		"""
+		Decodes a latent representation into an observation.
+		"""
+		if self.cfg.multitask:
+			z = self.task_emb(z, task)
+		return self._decoder(z)
+
 
 	def next(self, z, a, task):
 		"""

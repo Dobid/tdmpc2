@@ -28,6 +28,7 @@ rl:
     reward_coef: 0.1
     value_coef: 0.1
     consistency_coef: 20
+    decoder_coef: 1
     rho: 0.5
     lr: 3e-4
     enc_lr_scale: 0.3
@@ -70,6 +71,7 @@ rl:
     model_size: ???
     num_enc_layers: 2
     use_enc: true
+    use_decoder: false
     enc_dim: 256
     latent_dim: 512
     num_channels: 32

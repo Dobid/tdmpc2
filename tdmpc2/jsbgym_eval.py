@@ -1,4 +1,3 @@
-import random
 import torch
 import numpy as np
 import os
@@ -27,6 +26,7 @@ def eval(cfg: DictConfig):
 
     # env setup
     env = make_env(cfg)
+    state_names = list(prp.get_legal_name() for prp in env.state_prps)
 
     # Load agent
     agent = TDMPC2(cfg.rl)
@@ -48,7 +48,7 @@ def eval(cfg: DictConfig):
     if cfg_sim.render_mode == "none":
         total_steps = 50_000
     else: # otherwise, run the simulation for 8000 steps
-        total_steps = 4000
+        total_steps = 2000
 
     if cfg_sim.eval_sim_options.atmosphere.severity == "all":
         severity_range = ["off", "light", "moderate", "severe"]
@@ -76,16 +76,37 @@ def eval(cfg: DictConfig):
         eps_fcs_fluct = []
         print(f"********** TDMPC2 METRICS {severity} **********")
         obs, _ = env.reset(options=cfg_sim.eval_sim_options)
+        z_obs = agent.model.encode(torch.Tensor(obs).to(device), None)
         ep_cnt = 0 # episode counter
         ep_step = 0 # step counter within an episode
         step, t = 0, 0
         refs = simple_ref_data[ep_cnt]
-        roll_ref, pitch_ref = refs[0], refs[1]
+        # roll_ref, pitch_ref = refs[0], refs[1]
+        roll_ref = np.deg2rad(-10)
+        pitch_ref = np.deg2rad(15)
         while step < total_steps:
             env.set_target_state(roll_ref, pitch_ref)
             # action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
             action = agent.act(obs, t0=t==0, eval_mode=True)
             obs, reward, done, info = env.step(action)
+
+            # imagined trajectory
+            if cfg.rl.im_traj:
+                z_obs = agent.model.next(z_obs, torch.Tensor(action).to(device), None)
+                im_obs = agent.model.decode(z_obs, None)
+                im_dec_state_names = list('im_dec_' + state_name for state_name in state_names)
+                im_dec_obs_dict = dict(zip(im_dec_state_names, im_obs.cpu().detach().numpy()))
+                env.telemetry_logging(im_dec_obs_dict)
+
+            # decoded observation
+            if cfg.rl.dec_obs:
+                obs = torch.Tensor(obs).to(device)
+                encoded_obs = agent.model.encode(obs, None)
+                decoded_obs = agent.model.decode(encoded_obs, None)
+                dec_state_names = list('dec_' + state_name for state_name in state_names)
+                dec_obs_dict = dict(zip(dec_state_names, decoded_obs.cpu().detach().numpy()))
+                env.telemetry_logging(dec_obs_dict)
+
             e_obs.append(info["non_norm_obs"])
             t += 1
 
