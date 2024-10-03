@@ -172,8 +172,8 @@ class OnlineTrainer(Trainer):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, True
 		# initial roll and pitch references
-		roll_limit = np.deg2rad(self.cfg_all.roll_limit)
-		pitch_limit = np.deg2rad(self.cfg_all.pitch_limit)
+		roll_limit = np.deg2rad(self.cfg.roll_limit)
+		pitch_limit = np.deg2rad(self.cfg.pitch_limit)
 		while self._step <= self.cfg.steps:
 
 			# Evaluate agent periodically
