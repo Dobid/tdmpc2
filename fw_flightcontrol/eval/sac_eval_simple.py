@@ -1,3 +1,4 @@
+import random
 import torch
 import numpy as np
 import os
@@ -5,44 +6,49 @@ import csv
 import hydra
 
 from omegaconf import DictConfig
-from common.parser import parse_cfg
-from envs import make_env
-from tdmpc2 import TDMPC2
+from agents.sac import Actor_SAC
+from fw_jsbgym.trim.trim_point import TrimPoint
+from fw_flightcontrol.utils.train_utils import make_env
 
 
-@hydra.main(version_base=None, config_path="config", config_name="config")
+@hydra.main(version_base=None, config_path="../config", config_name="default")
 def eval(cfg: DictConfig):
     np.set_printoptions(precision=3)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.deterministic = True
     print(f"**** Using Device: {device} ****")
 
-    cfg.rl = parse_cfg(cfg.rl)
-    os.chdir(hydra.utils.get_original_cwd())
+    # seeding
+    seed = 10
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
 
     # shorter cfg aliases
-    cfg_rl = cfg.rl
+    cfg_sac = cfg.rl.SAC
     cfg_sim = cfg.env.jsbsim
+    cfg_task = cfg.env.task
 
     # env setup
-    env = make_env(cfg)
-    state_names = list(prp.get_legal_name() for prp in env.state_prps)
+    env = make_env(cfg_sac.env_id, cfg.env, cfg_sim.render_mode,
+                       'telemetry/telemetry.csv', eval=True)()
 
-    # Load agent
-    agent = TDMPC2(cfg.rl)
-    assert os.path.exists(cfg.rl.checkpoint), f"Checkpoint {cfg.rl.checkpoint} not found! Must be a valid filepath."
-    agent.load(cfg.rl.checkpoint)
+    # unwrapped_env = envs.envs[0].unwrapped
+    trim_point = TrimPoint('x8')
+
+    # loading the agent
+    train_dict = torch.load(cfg.model_path, map_location=device)[0] # only load the actor's state dict
+    sac_agent = Actor_SAC(env).to(device)
+    sac_agent.load_state_dict(train_dict)
+    sac_agent.eval()
 
     # load the reference sequence and initialize the evaluation arrays
-    simple_ref_data = np.load(f'eval/refs/{cfg_rl.ref_file}.npy')
+    simple_ref_data = np.load(f'eval/refs/{cfg.ref_file}.npy')
 
     # load the jsbsim seeds to apply at each reset and set the first seed
     jsbsim_seeds = np.load(f'eval/refs/jsbsim_seeds.npy')
     cfg_sim.eval_sim_options.seed = float(jsbsim_seeds[0])
 
-    # set default target values
-    # roll_ref: float = np.deg2rad(58)
-    # pitch_ref: float = np.deg2rad(28)
 
     # if no render mode, run the simulation for the whole reference sequence given by the .npy file
     if cfg_sim.render_mode == "none":
@@ -61,7 +67,7 @@ def eval(cfg: DictConfig):
     if not os.path.exists("eval/outputs"):
         os.makedirs("eval/outputs")
 
-    eval_res_csv = f"eval/outputs/{cfg_rl.res_file}.csv"
+    eval_res_csv = f"eval/outputs/{cfg.res_file}.csv"
     eval_fieldnames = ["severity", "roll_rmse", "pitch_rmse",
                         "roll_fcs_fluct", "pitch_fcs_fluct",
                         "avg_rmse", "avg_fcs_fluct"]
@@ -74,44 +80,28 @@ def eval(cfg: DictConfig):
         cfg_sim.eval_sim_options.atmosphere.severity = severity
         e_obs = []
         eps_fcs_fluct = []
-        print(f"********** TDMPC2 METRICS {severity} **********")
+        print(f"********** SAC METRICS {severity} **********")
         obs, _ = env.reset(options=cfg_sim.eval_sim_options)
-        z_obs = agent.model.encode(torch.Tensor(obs).to(device), None)
         ep_cnt = 0 # episode counter
         ep_step = 0 # step counter within an episode
-        step, t = 0, 0
+        step = 0
         refs = simple_ref_data[ep_cnt]
-        # roll_ref, pitch_ref = refs[0], refs[1]
-        roll_ref = np.deg2rad(-10)
-        pitch_ref = np.deg2rad(15)
+        roll_ref, pitch_ref = refs[0], refs[1]
+        # set default target values
+        roll_ref: float = np.deg2rad(-15)
+        pitch_ref: float = np.deg2rad(-10)
+
         while step < total_steps:
             env.set_target_state(roll_ref, pitch_ref)
-            # action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
-            action = agent.act(obs, t0=t==0, eval_mode=True)
-            obs, reward, done, info = env.step(action)
+            action = sac_agent.get_action(torch.Tensor(obs).unsqueeze(0).to(device))[2].squeeze_().detach().cpu().numpy()
+            obs, reward, terminated, truncated, info = env.step(action)
+            if cfg_task.mdp.obs_is_matrix:
+                e_obs.append(info["non_norm_obs"][0, -1])
+            else:
+                e_obs.append(info["non_norm_obs"])
 
-            # imagined trajectory
-            if cfg.rl.im_traj:
-                z_obs = agent.model.next(z_obs, torch.Tensor(action).to(device), None)
-                im_obs = agent.model.decode(z_obs, None)
-                im_dec_state_names = list('im_dec_' + state_name for state_name in state_names)
-                im_dec_obs_dict = dict(zip(im_dec_state_names, im_obs.cpu().detach().numpy()))
-                env.telemetry_logging(im_dec_obs_dict)
-
-            # decoded observation
-            if cfg.rl.dec_obs:
-                obs = torch.Tensor(obs).to(device)
-                encoded_obs = agent.model.encode(obs, None)
-                decoded_obs = agent.model.decode(encoded_obs, None)
-                dec_state_names = list('dec_' + state_name for state_name in state_names)
-                dec_obs_dict = dict(zip(dec_state_names, decoded_obs.cpu().detach().numpy()))
-                env.telemetry_logging(dec_obs_dict)
-
-            e_obs.append(info["non_norm_obs"])
-            t += 1
-
+            done = np.logical_or(terminated, truncated)
             if done:
-                t = 0
                 if info['out_of_bounds']:
                     print("Out of bounds")
                     e_obs[len(e_obs)-ep_step:] = [] # delete the last observations if the ep is oob
@@ -144,10 +134,11 @@ def eval(cfg: DictConfig):
         print("\nSeverity: ", severity)
         print(f"  Roll RMSE: {rmse[0]:.4f}\n  Pitch RMSE: {rmse[1]:.4f}")
         print(f"  Roll fluctuation: {fcs_fluct[0]:.4f}\n  Pitch fluctuation: {fcs_fluct[1]:.4f}")
-        print(f" Average RMSE: {np.mean(rmse):.4f}\n Average fluctuation: {np.mean(fcs_fluct):.4f}")
+        print(f"  Average RMSE: {np.mean(rmse):.4f}\n  Average fluctuation: {np.mean(fcs_fluct):.4f}")
         with open(eval_res_csv, "a") as csvfile:
             csv_writer = csv.DictWriter(csvfile, fieldnames=eval_fieldnames)
-            csv_writer.writerow({"severity": severity, "roll_rmse": rmse[0], "pitch_rmse": rmse[1], 
+            csv_writer.writerow({"severity": severity, 
+                                "roll_rmse": rmse[0], "pitch_rmse": rmse[1], 
                                 "roll_fcs_fluct": fcs_fluct[0], "pitch_fcs_fluct": fcs_fluct[1],
                                 "avg_rmse": np.mean(rmse), "avg_fcs_fluct": np.mean(fcs_fluct)})
 

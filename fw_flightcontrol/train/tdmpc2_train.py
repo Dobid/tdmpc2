@@ -1,4 +1,5 @@
 import os
+import sys
 os.environ['MUJOCO_GL'] = 'egl'
 os.environ['LAZY_LEGACY_OP'] = '0'
 import warnings
@@ -8,19 +9,21 @@ import torch
 import hydra
 from termcolor import colored
 
-from common.parser import parse_cfg
-from common.seed import set_seed
-from common.buffer import Buffer
-from envs import make_env
-from tdmpc2 import TDMPC2
-from trainer.offline_trainer import OfflineTrainer
-from trainer.online_trainer import OnlineTrainer
-from common.logger import Logger
+sys.path.append(f'{os.path.dirname(os.path.abspath(__file__))}/../agents/tdmpc2/tdmpc2/')
+
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.common.parser import parse_cfg
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.common.seed import set_seed
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.common.buffer import Buffer
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.envs import make_env
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.tdmpc2 import TDMPC2
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.trainer.offline_trainer import OfflineTrainer
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.trainer.online_trainer import OnlineTrainer
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.common.logger import Logger
 
 torch.backends.cudnn.benchmark = True
 
 
-@hydra.main(config_name='config', config_path='config')
+@hydra.main(config_name='tdmpc2_default', config_path='../config')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.

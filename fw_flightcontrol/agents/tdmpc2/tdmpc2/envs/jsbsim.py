@@ -1,5 +1,5 @@
 import gymnasium as gym
-import jsbgym
+import fw_jsbgym
 
 
 def make_env(cfg):

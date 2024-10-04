@@ -1,9 +1,12 @@
 # Logging
-tdmpc2/logs/
-tdmpc2/outputs/
-tdmpc2/wandb/
-tdmpc2/telemetry/
+fw_flightcontrol/agents/tdmpc2/tdmpc2/logs/
+fw_flightcontrol/agents/tdmpc2/tdmpc2/outputs/
+fw_flightcontrol/agents/tdmpc2/tdmpc2/wandb/
+fw_flightcontrol/agents/tdmpc2/tdmpc2/telemetry/
+
 outputs/
+runs/
+wandb/
 
 # HPC
 nautilus/*.yaml
@@ -132,4 +135,4 @@ dmypy.json
 
 # vscode
 .vscode/
-tdmpc2/a.py
+agents/tdmpc2/tdmpc2/a.py
