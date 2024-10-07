@@ -47,5 +47,5 @@ PPO:
     pa_coef: 0.0 # Pre activation coefficient (only in Bohn n2 paper)
     rand_targets: True # randomly sample references
     ref_sampler: 'uniform' # reference sampling distrib for the UAV
-    cst_beta: null # if ref_sampler is 'beta', set a constant beta.
+    beta_params: [0.7, 0.7] # if ref_sampler is 'beta', set a constant beta.
 

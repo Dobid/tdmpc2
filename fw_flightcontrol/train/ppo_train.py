@@ -23,30 +23,6 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
-# Global variables
-# Sequence of roll and pitch references for the the periodic evaluation
-ref_seq: np.ndarray = np.array([
-												[	# roll			,pitch
-													[np.deg2rad(25), np.deg2rad(15)], # easy
-													[np.deg2rad(-25), np.deg2rad(-15)],
-													[np.deg2rad(25), np.deg2rad(-15)],
-													[np.deg2rad(-25), np.deg2rad(15)]
-												],
-												[
-													[np.deg2rad(40), np.deg2rad(22)], # medium
-													[np.deg2rad(-40), np.deg2rad(-22)],
-													[np.deg2rad(40), np.deg2rad(-22)],
-													[np.deg2rad(-40), np.deg2rad(22)]
-												],
-												[
-													[np.deg2rad(55), np.deg2rad(28)], # hard
-													[np.deg2rad(-55), np.deg2rad(-28)],
-													[np.deg2rad(55), np.deg2rad(-28)],
-													[np.deg2rad(-55), np.deg2rad(28)]
-												]
-											])
-
-
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def train(cfg: DictConfig):
@@ -155,7 +131,6 @@ def train(cfg: DictConfig):
     pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
     roll_refs = np.ones(cfg_ppo.num_envs) * roll_ref
     pitch_refs = np.ones(cfg_ppo.num_envs) * pitch_ref
-    a = b = 0.70
 
     for update in tqdm(range(1, num_updates + 1)):
         # Annealing the rate if instructed to do so.
@@ -180,15 +155,10 @@ def train(cfg: DictConfig):
 
         prev_gl_step = global_step
 
-        # a = b = -0.01 * update + 1.01
-        # dydx = (a_b_min - a_b_max) / num_updates
-        # a = b = dydx * update + 1 +  abs(dydx)
-        # print(f"beta params: a = {a}, b = {b}")
-        
         # at half the updates, change the beta params
         if cfg_ppo.ref_sampler == "beta" and global_step > 7.5e5:
             print("change beta params, make the refs harder")
-            a = b = 0.10
+            cfg_ppo.beta_params = [0.1, 0.1]
 
         for step in range(0, cfg_ppo.num_steps):
             if cfg_ppo.track:
@@ -197,10 +167,9 @@ def train(cfg: DictConfig):
             obs[step] = next_obs
             terminateds[step] = next_terminated
 
+            # send initial reference points
             for i in range(cfg_ppo.num_envs):
                 ith_env_step = unwr_envs[i].sim[unwr_envs[i].current_step]
-                # if cfg_ppo.rand_targets:
-                # roll_ref, pitch_ref, _ = refSeqs[i].sample_refs(ith_env_step, i)
                 pitch_ref = pitch_refs[i]
                 roll_ref = roll_refs[i]
                 unwr_envs[i].set_target_state(roll_ref, pitch_ref)
@@ -220,24 +189,18 @@ def train(cfg: DictConfig):
 
             dones = np.logical_or(terminated, truncated)
 
+            # At every env reset, sample and send a new reference
             for env_i, done in enumerate(dones):
                 if done:
                     obs_t1[step][env_i] = obs[step][env_i]
-                    # refSeqs[env_i].sample_steps() # Sample a new sequence of reference steps
-                    # sample new references
                     if cfg_ppo.ref_sampler == "uniform":
                         roll_refs[env_i] = np.random.uniform(-roll_limit, roll_limit)
                         pitch_refs[env_i] = np.random.uniform(-pitch_limit, pitch_limit)
-                    # roll_refs[env_i] = np.deg2rad(60)
-                    # pitch_refs[env_i] = np.deg2rad(30)
                     if cfg_ppo.ref_sampler == "beta":
-                        if cfg_ppo.cst_beta is not None: # sample from beta with constant params
-                            roll_refs[env_i] = np.random.beta(cfg_ppo.cst_beta, cfg_ppo.cst_beta) * roll_limit*2 - roll_limit
-                            pitch_refs[env_i] = np.random.beta(cfg_ppo.cst_beta, cfg_ppo.cst_beta) * pitch_limit*2 - pitch_limit
-                            print(f"Sampled from beta with constant params {cfg_ppo.cst_beta}")
-                        else:
-                            roll_refs[env_i] = np.random.beta(a, b) * roll_limit*2 - roll_limit
-                            pitch_refs[env_i] = np.random.beta(a, b) * pitch_limit*2 - pitch_limit
+                        if cfg_ppo.beta_params is not None:
+                            roll_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
+                            pitch_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * pitch_limit*2 - pitch_limit
+                            print(f"Sampled from beta with params {cfg_ppo.beta_params}")
 
                     print(f"Env Done, new refs : \
                           roll = {np.rad2deg(roll_refs[env_i])}, \
@@ -454,7 +417,7 @@ def train(cfg: DictConfig):
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
 
-    # Evaluate the agent once
+    # Evaluate the agent once with a single traj to be plotted in wandb
     if cfg_ppo.final_traj_plot:
         print("******** Plotting... ***********")
         pe_env = envs.envs[0]
@@ -479,14 +442,6 @@ def train(cfg: DictConfig):
             if done:
                 e_refSeq.sample_steps(offset=step)
                 print(f"Episode reward: {info['episode']['r']}")
-                r_per_step = info["episode"]["r"]/info["episode"]["l"]
-                # Save the best agents depending on the env
-                # if cfg_ppo.save_best:
-                #     if (cfg_ppo.env_id == "ACBohn-v0" and r_per_step > -0.20) or \
-                #        ((cfg_ppo.env_id == "ACBohnNoVa-v0" or cfg_ppo.env_id == "ACBohnNoVaIErr-v0") and r_per_step > -0.06):
-                #         save_model(save_path, run_name, agent, pe_env, cfg_ppo.seed)
-                # else:
-                #     save_model(save_path, run_name, agent, pe_env, cfg_ppo.seed)
                 break
         telemetry_df = pd.read_csv(telemetry_file)
         telemetry_table = wandb.Table(dataframe=telemetry_df)
@@ -495,13 +450,12 @@ def train(cfg: DictConfig):
     else:
         save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
 
-
+    # Proper full evaluation
     if cfg_ppo.final_eval:
         # load the reference sequence and initialize the evaluation arrays
         simple_ref_data = np.load("eval/refs/simple_easy.npy")
 
         # if no render mode, run the simulation for the whole reference sequence given by the .npy file
-        # total_steps = ref_data.shape[0]
         seed = 10
         random.seed(seed)
         np.random.seed(seed)
@@ -509,13 +463,10 @@ def train(cfg: DictConfig):
         torch.backends.cudnn.deterministic = True
 
         severity_range = ["off", "light", "moderate", "severe"]
-        # severity_range = ["off"]
         all_mse = []
         all_rmse = []
         all_fcs_fluct = []
         total_steps = 50_000
-        e_roll_limit = np.deg2rad(60)
-        e_pitch_limit = np.deg2rad(30)
 
         for i, severity in enumerate(severity_range):
             e_env = envs.envs[0]
@@ -526,8 +477,8 @@ def train(cfg: DictConfig):
             print(f"********** PPO METRICS {severity} **********")
             obs, _ = e_env.reset(options=cfg.env.jsbsim.eval_sim_options)
             obs = torch.Tensor(obs).unsqueeze_(0).to(device)
-            roll_ref = np.random.uniform(-e_roll_limit, e_roll_limit)
-            pitch_ref = np.random.uniform(-e_pitch_limit, e_pitch_limit)
+            roll_ref = np.random.uniform(-roll_limit, roll_limit)
+            pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
             ep_cnt = 0 # episode counter
 
             for step in tqdm(range(total_steps)):
@@ -550,8 +501,8 @@ def train(cfg: DictConfig):
                     if ep_cnt < len(simple_ref_data):
                         refs = simple_ref_data[ep_cnt]
                     # roll_ref, pitch_ref = refs[0], refs[1]
-                    roll_ref = np.random.uniform(-e_roll_limit, e_roll_limit)
-                    pitch_ref = np.random.uniform(-e_pitch_limit, e_pitch_limit)
+                    roll_ref = np.random.uniform(-roll_limit, roll_limit)
+                    pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
             all_fcs_fluct.append(np.mean(np.array(eps_fcs_fluct), axis=0))
             roll_mse = np.mean(np.square(e_obs[:, 6]))
             pitch_mse = np.mean(np.square(e_obs[:, 7]))
