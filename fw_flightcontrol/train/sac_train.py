@@ -83,8 +83,6 @@ def train(cfg: DictConfig):
     print("Single Env Observation Space Shape = ", envs.single_observation_space.shape)
     unwr_envs = envs.envs[0].unwrapped
 
-    max_action = float(envs.single_action_space.high[0])
-
     actor = Actor_SAC(envs).to(device)
     qf1 = SoftQNetwork_SAC(envs).to(device)
     qf2 = SoftQNetwork_SAC(envs).to(device)
@@ -135,7 +133,6 @@ def train(cfg: DictConfig):
         if cfg_sac.periodic_eval and (prev_div != curr_div or global_step == 0):
             print(f"prev_gl_step = {prev_gl_step}, global_step = {global_step}, prev_div = {prev_div}, curr_div = {curr_div}")
             eval_dict = periodic_eval(cfg_mdp, cfg_sim, envs.envs[0], actor, device)
-            _eval_dict = dict()
             for k, v in eval_dict.items():
                 writer.add_scalar("eval/" + k, v, global_step)
         prev_gl_step = global_step
@@ -163,8 +160,6 @@ def train(cfg: DictConfig):
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}, episodic_length={info['episode']['l']} \n" + \
                       f"episode_end={info['episode_end']}, out_of_bounds={info['out_of_bounds']}\n********")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                r_per_step = info["episode"]["r"]/info["episode"]["l"]
-                # writer.add_scalar("charts/reward_per_step", r_per_step, global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 break
 
