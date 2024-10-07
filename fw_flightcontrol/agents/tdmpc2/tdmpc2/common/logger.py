@@ -7,6 +7,7 @@ from termcolor import colored
 from omegaconf import OmegaConf
 
 from common import TASK_SET
+from pathlib import Path
 
 
 CONSOLE_FORMAT = [
@@ -107,7 +108,7 @@ class Logger:
 
 	def __init__(self, cfg):
 		self._log_dir = make_dir(cfg.rl.work_dir)
-		self._model_dir = make_dir(f"models/train/tdmpc2/{cfg.rl.seed}")
+		self._model_dir = make_dir(Path(f"models/train/tdmpc2/{cfg.rl.seed}"))
 		self._save_csv = cfg.rl.save_csv
 		self._save_agent = cfg.rl.save_agent
 		self._group = cfg_to_group(cfg.rl)
