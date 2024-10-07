@@ -3,10 +3,17 @@ fw_flightcontrol/agents/tdmpc2/tdmpc2/logs/
 fw_flightcontrol/agents/tdmpc2/tdmpc2/outputs/
 fw_flightcontrol/agents/tdmpc2/tdmpc2/wandb/
 fw_flightcontrol/agents/tdmpc2/tdmpc2/telemetry/
+fw_flightcontrol/models/train/
+fw_flightcontrol/telemetry/
+fw_flightcontrol/outputs/
+fw_flightcontrol/eval/outputs/*
 
-outputs/
 runs/
 wandb/
+logs/
+
+# Exceptions
+!fw_flightcontrol/eval/outputs/icinco/
 
 # HPC
 nautilus/*.yaml
