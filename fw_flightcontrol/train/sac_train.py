@@ -1,7 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/sac/#sac_continuous_actionpy
 import random
 import time
-from time import strftime, localtime
 
 import gymnasium as gym
 import numpy as np
@@ -42,8 +41,7 @@ def train(cfg: DictConfig):
 
     np.set_printoptions(suppress=True)
 
-    date_time = strftime('%d-%m_%H:%M:%S', localtime())
-    run_name = f"sac_{cfg_sac.exp_name}_{cfg_sac.seed}_{date_time}"
+    run_name = f"sac_{cfg_sac.exp_name}_{cfg_sac.seed}"
     if cfg_sac.track:
         import wandb
 

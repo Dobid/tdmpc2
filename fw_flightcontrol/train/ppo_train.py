@@ -4,7 +4,6 @@ import random
 import time
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from time import strftime, localtime
 from tqdm import tqdm
 from fw_jsbgym.trim.trim_point import TrimPoint
 from fw_jsbgym.models.aerodynamics import AeroModel
@@ -69,8 +68,7 @@ def train(cfg: DictConfig):
 
     np.set_printoptions(suppress=True)
 
-    date_time = strftime('%d-%m_%H:%M:%S', localtime())
-    run_name = f"ppo_{cfg_ppo.exp_name}_{cfg_ppo.seed}_{date_time}"
+    run_name = f"ppo_{cfg_ppo.exp_name}_{cfg_ppo.seed}"
 
     save_path: str = "models/train/ppo"
     if not os.path.exists(save_path):
@@ -168,7 +166,7 @@ def train(cfg: DictConfig):
         
         # save checkpoints periodically
         if cfg_ppo.save_cp and update % 8 == 0:
-            run_name = f"ppo_{cfg_ppo.exp_name}_cp{global_step}_{cfg_ppo.seed}_{date_time}"
+            run_name = f"ppo_{cfg_ppo.exp_name}_cp{global_step}_{cfg_ppo.seed}"
             save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
 
         # run periodic evaluation
