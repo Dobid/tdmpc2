@@ -276,7 +276,7 @@ def train(cfg: DictConfig):
         wandb.log({"FinalTraj/telemetry": telemetry_table})
 
 
-    save_model_SAC(run_name, actor, qf1, qf2)
+    save_model_SAC(run_name, actor, qf1, qf2, cfg_sac.seed)
     envs.close()
     writer.close()
 

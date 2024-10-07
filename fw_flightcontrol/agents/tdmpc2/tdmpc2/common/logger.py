@@ -107,7 +107,7 @@ class Logger:
 
 	def __init__(self, cfg):
 		self._log_dir = make_dir(cfg.rl.work_dir)
-		self._model_dir = make_dir(self._log_dir / "models")
+		self._model_dir = make_dir(f"models/train/tdmpc2/{cfg.rl.seed}")
 		self._save_csv = cfg.rl.save_csv
 		self._save_agent = cfg.rl.save_agent
 		self._group = cfg_to_group(cfg.rl)
@@ -125,13 +125,13 @@ class Logger:
 			return
 		os.environ["WANDB_SILENT"] = "true" if cfg.rl.wandb_silent else "false"
 		import wandb
-		exp_name = "tdmpc2_" + cfg.rl.exp_name + "_" + str(cfg.rl.seed)
+		self.exp_name = "tdmpc2_" + cfg.rl.exp_name + "_" + str(cfg.rl.seed)
 
 		wandb.init(
 			project=self.project,
 			entity=self.entity,
 			# name=str(cfg.seed),
-			name=exp_name,
+			name=self.exp_name,
 			group=self._group,
 			# tags=cfg_to_group(cfg.rl, return_list=True) + [f"seed:{cfg.rl.seed}"],
 			tags=["tdmpc2", cfg.rl.task],
@@ -160,7 +160,7 @@ class Logger:
 
 	def save_agent(self, agent=None, identifier='final'):
 		if self._save_agent and agent:
-			fp = self._model_dir / f'{str(identifier)}.pt'
+			fp = self._model_dir / f'{self.exp_name}.pt'
 			agent.save(fp)
 			if self._wandb:
 				artifact = self._wandb.Artifact(

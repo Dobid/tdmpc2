@@ -130,7 +130,7 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
 
 # Save the model PPO
 def save_model_PPO(save_path, run_name, agent, env, seed):
-    save_path: str = "models/train/ppo"
+    save_path: str = f"models/train/ppo/{seed}/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     model_path = f"{save_path}{run_name}.pt"
@@ -142,8 +142,8 @@ def save_model_PPO(save_path, run_name, agent, env, seed):
 
 
 # Save the model TD3/SAC
-def save_model_SAC(run_name, actor, qf1, qf2):
-    save_path: str = "models/train/sac"
+def save_model_SAC(run_name, actor, qf1, qf2, seed):
+    save_path: str = f"models/train/sac/{seed}/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     model_path = f"{save_path}{run_name}.pt"
