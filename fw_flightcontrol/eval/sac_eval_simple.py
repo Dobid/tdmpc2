@@ -6,8 +6,7 @@ import csv
 import hydra
 
 from omegaconf import DictConfig
-from agents.sac import Actor_SAC
-from fw_jsbgym.trim.trim_point import TrimPoint
+from fw_flightcontrol.agents.sac import Actor_SAC
 from fw_flightcontrol.utils.train_utils import make_env
 
 
@@ -32,9 +31,6 @@ def eval(cfg: DictConfig):
     # env setup
     env = make_env(cfg_sac.env_id, cfg.env, cfg_sim.render_mode,
                        'telemetry/telemetry.csv', eval=True)()
-
-    # unwrapped_env = envs.envs[0].unwrapped
-    trim_point = TrimPoint('x8')
 
     # loading the agent
     train_dict = torch.load(cfg.model_path, map_location=device)[0] # only load the actor's state dict
@@ -88,8 +84,8 @@ def eval(cfg: DictConfig):
         refs = simple_ref_data[ep_cnt]
         roll_ref, pitch_ref = refs[0], refs[1]
         # set default target values
-        roll_ref: float = np.deg2rad(-15)
-        pitch_ref: float = np.deg2rad(-10)
+        # roll_ref: float = np.deg2rad(-15)
+        # pitch_ref: float = np.deg2rad(-10)
 
         while step < total_steps:
             env.set_target_state(roll_ref, pitch_ref)

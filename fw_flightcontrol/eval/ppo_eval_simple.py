@@ -7,7 +7,6 @@ import hydra
 
 from omegaconf import DictConfig
 from fw_flightcontrol.agents import ppo
-from fw_jsbgym.trim.trim_point import TrimPoint
 from fw_flightcontrol.utils.train_utils import make_env
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
@@ -32,9 +31,6 @@ def eval(cfg: DictConfig):
     env = make_env(cfg_ppo.env_id, cfg.env, cfg_sim.render_mode,
                        'telemetry/telemetry.csv', eval=True)()
 
-    # unwrapped_env = envs.envs[0].unwrapped
-    trim_point = TrimPoint('x8')
-
     # loading the agent
     train_dict = torch.load(cfg.model_path, map_location=device)
     ppo_agent = ppo.Agent_PPO(env, cfg).to(device)
@@ -47,10 +43,6 @@ def eval(cfg: DictConfig):
     # load the jsbsim seeds to apply at each reset and set the first seed
     jsbsim_seeds = np.load(f'eval/refs/jsbsim_seeds.npy')
     cfg_sim.eval_sim_options.seed = float(jsbsim_seeds[0])
-
-    # set default target values
-    # roll_ref: float = np.deg2rad(58)
-    # pitch_ref: float = np.deg2rad(28)
 
     # if no render mode, run the simulation for the whole reference sequence given by the .npy file
     if cfg_sim.render_mode == "none":
@@ -90,9 +82,10 @@ def eval(cfg: DictConfig):
         step = 0
         refs = simple_ref_data[ep_cnt]
         roll_ref, pitch_ref = refs[0], refs[1]
+        # set default target values
+        # roll_ref = np.deg2rad(55)
+        # pitch_ref = np.deg2rad(28)
         while step < total_steps:
-            roll_ref = np.deg2rad(55)
-            pitch_ref = np.deg2rad(28)
             env.set_target_state(roll_ref, pitch_ref)
             action = ppo_agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
             obs, reward, terminated, truncated, info = env.step(action)
