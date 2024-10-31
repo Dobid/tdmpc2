@@ -84,9 +84,10 @@ def eval(cfg: DictConfig):
         ep_step = 0 # step counter within an episode
         step, t = 0, 0
         refs = simple_ref_data[ep_cnt]
-        # roll_ref, pitch_ref = refs[0], refs[1]
-        roll_ref = np.deg2rad(-10)
-        pitch_ref = np.deg2rad(15)
+        roll_ref, pitch_ref = refs[0], refs[1]
+        # default target values
+        # roll_ref = np.deg2rad(-10)
+        # pitch_ref = np.deg2rad(15)
         while step < total_steps:
             env.set_target_state(roll_ref, pitch_ref)
             # action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
