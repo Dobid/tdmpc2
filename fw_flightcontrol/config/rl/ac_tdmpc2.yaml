@@ -27,6 +27,11 @@ wandb_entity: thesedavid
 wandb_silent: false
 disable_wandb: false
 
+# arch
+use_enc: true
+use_decoder: false
+gaussian_dyn: false
+
 # misc
 save_agent: true
 seed: ???

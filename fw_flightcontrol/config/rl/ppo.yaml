@@ -30,8 +30,8 @@ PPO:
     gamma: 0.99 # discount factor
     gae_lambda: 0.95 # GAE lambda
     num_minibatches: 32 # number of minibatches to train the policy on
-    batch_size: ${eval:'${PPO.num_envs} * ${PPO.num_steps}'}
-    minibatch_size: ${eval:'${PPO.batch_size} // ${PPO.num_minibatches}'} # minibatch size
+    batch_size: ??? # to be computed in the training script
+    minibatch_size: ???
     update_epochs: 10 # number of epochs to train the policy on
     norm_adv: True # normalize the advantage
     clip_coef: 0.2 # surrogate clipping coefficient
