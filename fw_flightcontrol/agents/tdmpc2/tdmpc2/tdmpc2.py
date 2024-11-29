@@ -301,7 +301,7 @@ class TDMPC2:
 		self.model.eval()
 		return {
 			"consistency_loss": float(consistency_loss.mean().item()),
-			"decoder_loss": float(decoder_loss.mean().item()),
+			"decoder_loss": float(decoder_loss.mean().item()) if self.cfg.use_decoder else 0,
 			"reward_loss": float(reward_loss.mean().item()),
 			"value_loss": float(value_loss.mean().item()),
 			"pi_loss": pi_loss,
