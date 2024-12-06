@@ -10,7 +10,7 @@ from fw_jsbgym.models.aerodynamics import AeroModel
 from fw_flightcontrol.agents.ppo import Agent_PPO
 from fw_flightcontrol.agents.pid import torchPID
 from fw_flightcontrol.utils.eval_utils import RefSequence
-from fw_flightcontrol.utils.train_utils import periodic_eval, make_env, save_model_PPO
+from fw_flightcontrol.utils.train_utils import periodic_eval, make_env, save_model_PPO, sample_refs
 
 import wandb
 import gymnasium as gym
@@ -42,7 +42,7 @@ def train(cfg: DictConfig):
     cfg_sim = cfg.env.jsbsim
     cfg_mdp = cfg.env.task.mdp
 
-    np.set_printoptions(suppress=True)
+    np.set_printoptions(precision=3)
 
     run_name = f"ppo_{cfg_ppo.exp_name}_{cfg_ppo.seed}"
 
@@ -124,13 +124,7 @@ def train(cfg: DictConfig):
     for _ in range(cfg_ppo.num_envs):
         refSeqs[_].sample_steps()
 
-    # initial roll and pitch references
-    roll_limit = np.deg2rad(cfg.roll_limit)
-    pitch_limit = np.deg2rad(cfg.pitch_limit)
-    roll_ref = np.random.uniform(-roll_limit, roll_limit)
-    pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-    roll_refs = np.ones(cfg_ppo.num_envs) * roll_ref
-    pitch_refs = np.ones(cfg_ppo.num_envs) * pitch_ref
+    refs = sample_refs(True, cfg_ppo.env_id, cfg, cfg_ppo)
 
     for update in tqdm(range(1, num_updates + 1)):
         # Annealing the rate if instructed to do so.
@@ -149,7 +143,7 @@ def train(cfg: DictConfig):
         curr_div, _ = divmod(global_step, cfg_ppo.eval_freq)
         print(f"prev_gl_step = {prev_gl_step}, global_step = {global_step}, prev_div = {prev_div}, curr_div = {curr_div}")
         if cfg_ppo.periodic_eval and (prev_div != curr_div or global_step == 0):
-            eval_dict = periodic_eval(cfg_mdp, cfg_sim, envs.envs[0], agent, device)
+            eval_dict = periodic_eval(cfg_ppo.env_id, cfg_mdp, cfg_sim, envs.envs[0], agent, device)
             for k, v in eval_dict.items():
                 writer.add_scalar("eval/" + k, v, global_step)
 
@@ -170,9 +164,10 @@ def train(cfg: DictConfig):
             # send initial reference points
             for i in range(cfg_ppo.num_envs):
                 ith_env_step = unwr_envs[i].sim[unwr_envs[i].current_step]
-                pitch_ref = pitch_refs[i]
-                roll_ref = roll_refs[i]
-                unwr_envs[i].set_target_state(roll_ref, pitch_ref)
+                if 'AC' in cfg_ppo.env_id:
+                    unwr_envs[i].set_target_state(refs[i, 0], refs[i, 1])
+                elif 'Waypoint' in cfg_ppo.env_id:
+                    unwr_envs[i].set_target_state(refs[i, 0], refs[i, 1], refs[i, 2])
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -193,18 +188,26 @@ def train(cfg: DictConfig):
             for env_i, done in enumerate(dones):
                 if done:
                     obs_t1[step][env_i] = obs[step][env_i]
-                    if cfg_ppo.ref_sampler == "uniform":
-                        roll_refs[env_i] = np.random.uniform(-roll_limit, roll_limit)
-                        pitch_refs[env_i] = np.random.uniform(-pitch_limit, pitch_limit)
-                    if cfg_ppo.ref_sampler == "beta":
-                        if cfg_ppo.beta_params is not None:
-                            roll_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
-                            pitch_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * pitch_limit*2 - pitch_limit
-                            print(f"Sampled from beta with params {cfg_ppo.beta_params}")
+                    refs[env_i] = sample_refs(False, cfg_ppo.env_id, cfg, cfg_ppo)
+                    # if cfg_ppo.ref_sampler == "beta":
+                    #     if cfg_ppo.beta_params is not None:
+                    #         roll_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
+                    #         pitch_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * pitch_limit*2 - pitch_limit
+                    #         print(f"Sampled from beta with params {cfg_ppo.beta_params}")
 
-                    print(f"Env Done, new refs : \
-                          roll = {np.rad2deg(roll_refs[env_i])}, \
-                          pitch = {np.rad2deg(pitch_refs[env_i])} sampled for env {env_i}")
+                    # print(f"Env {env_i} done, new refs : "\
+                    #       f"roll = {np.rad2deg(refs[env_i, 0]):.3f}, "\
+                    #       f"pitch = {np.rad2deg(refs[env_i, 1]):.3f}")
+                    if 'AC' in cfg_ppo.env_id:
+                        print(f"Env {env_i} done, new refs : "\
+                            f"roll = {np.rad2deg(refs[env_i, 0]):.3f}, "\
+                            f"pitch = {np.rad2deg(refs[env_i, 1]):.3f}")
+                    elif 'Waypoint' in cfg_ppo.env_id:
+                        print(f"Env {env_i} done, new refs : "\
+                              f"x = {refs[env_i, 0]:.3f}, "\
+                              f"y = {refs[env_i, 1]:.3f}, "\
+                              f"z = {refs[env_i, 2]:.3f}")
+
                 else:
                     obs_t1[step][env_i] = next_obs[env_i]
 
@@ -371,7 +374,7 @@ def train(cfg: DictConfig):
 
                 # preactivation loss
                 pa_loss = torch.Tensor([0.0]).to(device)
-                if cfg_ppo.env_id not in ["ACNoVaPIDRLAdd-v0", "ACNoVaPIDRL-v0"]:
+                if cfg_ppo.env_id not in ["ACNoVaPIDRLAdd-v0", "ACNoVaPIDRL-v0", "WaypointTracking-v0"]:
                     pa_loss = torch.linalg.norm(act_means - trim_acts, ord=2)
 
                 loss = pg_loss - cfg_ppo.ent_coef * entropy_loss + v_loss * cfg_ppo.vf_coef \

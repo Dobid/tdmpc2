@@ -5,38 +5,66 @@ import gymnasium as gym
 import fw_jsbgym
 from fw_flightcontrol.agents.sac import Actor_SAC
 from fw_flightcontrol.agents.ppo import Agent_PPO
+from fw_flightcontrol.utils.gym_utils import MyNormalizeObservation
 
 # Global variables
 # Sequence of roll and pitch references for the the periodic evaluation
-ref_seq: np.ndarray = np.array([
-												[	# roll			,pitch
-													[np.deg2rad(25), np.deg2rad(15)], # easy
-													[np.deg2rad(-25), np.deg2rad(-15)],
-													[np.deg2rad(25), np.deg2rad(-15)],
-													[np.deg2rad(-25), np.deg2rad(15)]
-												],
-												[
-													[np.deg2rad(40), np.deg2rad(22)], # medium
-													[np.deg2rad(-40), np.deg2rad(-22)],
-													[np.deg2rad(40), np.deg2rad(-22)],
-													[np.deg2rad(-40), np.deg2rad(22)]
-												],
-												[
-													[np.deg2rad(55), np.deg2rad(28)], # hard
-													[np.deg2rad(-55), np.deg2rad(-28)],
-													[np.deg2rad(55), np.deg2rad(-28)],
-													[np.deg2rad(-55), np.deg2rad(28)]
-												]
-											])
+attitude_seq: np.ndarray = np.array([
+                                        [	# roll, pitch
+                                            [np.deg2rad(25), np.deg2rad(15)], # easy
+                                            [np.deg2rad(-25), np.deg2rad(-15)],
+                                            [np.deg2rad(25), np.deg2rad(-15)],
+                                            [np.deg2rad(-25), np.deg2rad(15)]
+                                        ],
+                                        [
+                                            [np.deg2rad(40), np.deg2rad(22)], # medium
+                                            [np.deg2rad(-40), np.deg2rad(-22)],
+                                            [np.deg2rad(40), np.deg2rad(-22)],
+                                            [np.deg2rad(-40), np.deg2rad(22)]
+                                        ],
+                                        [
+                                            [np.deg2rad(55), np.deg2rad(28)], # hard
+                                            [np.deg2rad(-55), np.deg2rad(-28)],
+                                            [np.deg2rad(55), np.deg2rad(-28)],
+                                            [np.deg2rad(-55), np.deg2rad(28)]
+                                        ]
+                                    ])
+
+# Waypoint Tracking sequence for the periodic evaluation
+waypoint_seq: np.ndarray = np.array([
+                                        [   # x, y, z
+                                            [100, 100, 600], # alt eq
+                                            [100, -100, 600],
+                                            [-100, 100, 600],
+                                            [-100, -100, 600]
+                                        ],
+                                        [
+                                            [100, 100, 500], # alt down
+                                            [100, -100, 500],
+                                            [-100, 100, 500],
+                                            [-100, -100, 500] 
+                                        ],
+                                        [
+                                            [100, 100, 700], # alt up
+                                            [100, -100, 700],
+                                            [-100, 100, 700],
+                                            [-100, -100, 700] 
+                                        ]
+                                    ])
+
 
 # Run periodic evaluation during training
-def periodic_eval(cfg_mdp, cfg_sim, env, agent, device):
+def periodic_eval(env_id, cfg_mdp, cfg_sim, env, agent, device):
     """Periodically evaluate a given agent."""
     print("*** Evaluating the agent ***")
     env.eval = True
     ep_rewards = []
     dif_obs = []
     dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
+    if 'AC' in env_id:
+        ref_seq = attitude_seq
+    elif 'Waypoint' in env_id:
+        ref_seq = waypoint_seq
     for dif_idx, ref_dif in enumerate(ref_seq): # iterate over the difficulty levels
         dif_obs.append([])
         dif_fcs_fluct.append([])
@@ -44,8 +72,11 @@ def periodic_eval(cfg_mdp, cfg_sim, env, agent, device):
             obs, info = env.reset(options=cfg_sim.eval_sim_options)
             obs, info, done, ep_reward = torch.Tensor(obs).unsqueeze(0).to(device), info, False, 0
             while not done:
-                # Set roll and pitch references
-                env.set_target_state(ref_ep[0], ref_ep[1]) # 0: roll, 1: pitch
+                # if there is 'AC' in the env_id, set the target state to the roll and pitch references
+                if 'AC' in env_id:
+                    env.set_target_state(ref_ep[0], ref_ep[1]) # 0: roll, 1: pitch
+                if 'Waypoint' in env_id:
+                    env.set_target_state(ref_ep[0], ref_ep[1], ref_ep[2]) # 0: x, 1: y, 2: z
                 with torch.no_grad():
                     if isinstance(agent, Actor_SAC):
                         action = agent.get_action(obs)[2].squeeze_(0).detach().cpu().numpy()
@@ -120,12 +151,39 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
                         render_mode=render_mode)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
+        env = gym.wrappers.NormalizeObservation(env)
         # env = MyNormalizeObservation(env, eval=eval)
         if not eval:
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         return env
 
     return thunk
+
+
+def sample_refs(init_ref, env_id, cfg, cfg_rl):
+    refs = None
+    if 'AC' in env_id:
+        roll_high = np.full((cfg_rl.num_envs, 1), np.deg2rad(cfg.roll_limit))
+        pitch_high = np.full((cfg_rl.num_envs, 1), np.deg2rad(cfg.pitch_limit))
+        roll_refs = np.random.uniform(-roll_high, roll_high)
+        pitch_refs = np.random.uniform(-pitch_high, pitch_high)
+        refs = np.hstack((roll_refs, pitch_refs))
+    elif 'Waypoint' in cfg_rl.env_id:
+        # xy_lows = np.full((cfg_rl.num_envs, 2), 50)
+        # xy_highs = np.full((cfg_rl.num_envs, 2), 100)
+        # xy_ref = np.random.uniform(xy_lows, xy_highs) * np.random.choice([-1, 1], (cfg_rl.num_envs, 2))
+        # x_ref = np.zeros((cfg_rl.num_envs, 1))
+        # y_ref = np.random.uniform(250, 350, (cfg_rl.num_envs, 1))
+        # z_ref = np.random.uniform(550, 650, (cfg_rl.num_envs, 1))
+        x_refs = np.full((cfg_rl.num_envs, 1), 0)
+        y_refs = np.full((cfg_rl.num_envs, 1), 300)
+        z_refs = np.full((cfg_rl.num_envs, 1), 600)
+        refs = np.hstack((x_refs, y_refs, z_refs))
+    # if it's not the initial reference return the first element of the list
+    if not init_ref:
+        refs = refs[0]
+    assert refs is not None
+    return refs
 
 
 # Save the model PPO
