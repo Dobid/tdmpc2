@@ -91,8 +91,8 @@ def main():
         simple_easy_ref_seq_arr[i] = np.array([roll_ref, pitch_ref])
 
         # simple refs medium : roll [-45, -30]U[30, 45], pitch [-25, -20]U[20, 25]
-        roll_ref = np.deg2rad(np.random.uniform(45, 30))
-        pitch_ref = np.deg2rad(np.random.uniform(25, 20))
+        roll_ref = np.deg2rad(np.random.uniform(30, 45))
+        pitch_ref = np.deg2rad(np.random.uniform(20, 25))
         roll_sign = np.random.choice([-1, 1])
         roll_ref *= roll_sign
         pitch_sign = np.random.choice([-1, 1])
@@ -100,8 +100,8 @@ def main():
         simple_medium_ref_seq_arr[i] = np.array([roll_ref, pitch_ref])
 
         # simple refs hard : roll [-60, -45]U[45, 60], pitch [-30, -25]U[25, 30]
-        roll_ref = np.deg2rad(np.random.uniform(60, 45))
-        pitch_ref = np.deg2rad(np.random.uniform(30, 25))
+        roll_ref = np.deg2rad(np.random.uniform(45, 60))
+        pitch_ref = np.deg2rad(np.random.uniform(25, 30))
         roll_sign = np.random.choice([-1, 1])
         roll_ref *= roll_sign
         pitch_sign = np.random.choice([-1, 1])
@@ -115,18 +115,18 @@ def main():
     ref_seq_arr = ref_seq_arr[1:]
     step_seq_arr = step_seq_arr - 1
 
-    np.save("eval/step_seq_arr.npy", step_seq_arr)
-    np.save("eval/ref_seq_arr.npy", ref_seq_arr)
-    np.save("eval/simple_easy_ref_seq_arr.npy", simple_easy_ref_seq_arr)
-    np.save("eval/simple_medium_ref_seq_arr.npy", simple_medium_ref_seq_arr)
-    np.save("eval/simple_hard_ref_seq_arr.npy", simple_hard_ref_seq_arr)
+    np.save("eval/refs/step_seq_arr.npy", step_seq_arr)
+    np.save("eval/refs/ref_seq_arr.npy", ref_seq_arr)
+    np.save("eval/refs/simple_easy_ref_seq_arr.npy", simple_easy_ref_seq_arr)
+    np.save("eval/refs/simple_medium_ref_seq_arr.npy", simple_medium_ref_seq_arr)
+    np.save("eval/refs/simple_hard_ref_seq_arr.npy", simple_hard_ref_seq_arr)
 
     # read the reference steps and values from a file
-    step_seq_arr = np.load("eval/step_seq_arr.npy")
-    ref_seq_arr = np.load("eval/ref_seq_arr.npy")
-    simple_easy_ref_seq_arr = np.load("eval/simple_ref_seq_arr.npy")
-    simple_medium_ref_seq_arr = np.load("eval/simple_ref_seq_arr.npy")
-    simple_hard_ref_seq_arr = np.load("eval/simple_ref_seq_arr.npy")
+    step_seq_arr = np.load("eval/refs/step_seq_arr.npy")
+    ref_seq_arr = np.load("eval/refs/ref_seq_arr.npy")
+    simple_easy_ref_seq_arr = np.load("eval/refs/simple_easy_ref_seq_arr.npy")
+    simple_medium_ref_seq_arr = np.load("eval/refs/simple_medium_ref_seq_arr.npy")
+    simple_hard_ref_seq_arr = np.load("eval/refs/simple_hard_ref_seq_arr.npy")
 
     print(step_seq_arr)
     print(ref_seq_arr)
