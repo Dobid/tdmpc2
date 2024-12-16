@@ -43,6 +43,7 @@ def main(cfg: DictConfig):
     # obs = torch.Tensor(obs).unsqueeze_(0).to(device)
 
     ep_obss = [obs]
+    ep_rewards = [0]
     step = 0
     target = np.array([0, 330, 600])
     while step < total_steps:
@@ -51,6 +52,7 @@ def main(cfg: DictConfig):
         obs, reward, terminated, truncated, info = env.step(trim_action)
         # obs = torch.Tensor(obs).unsqueeze_(0).to(device)
         ep_obss.append(obs)
+        ep_rewards.append(reward)
 
         done = np.logical_or(terminated, truncated)
         if done:
@@ -65,12 +67,13 @@ def main(cfg: DictConfig):
         step += 1
 
     ep_obss = np.array(ep_obss)
+    ep_rewards = np.array(ep_rewards)
     errs_x = ep_obss[:, 3]
     errs_y = ep_obss[:, 4]
     errs_z = ep_obss[:, 5]
     dist_to_target = np.sqrt(errs_x**2 + errs_y**2 + errs_z**2)
     tsteps = np.linspace(0, ep_obss.shape[0], ep_obss.shape[0])
-    fig, ax = plt.subplots(2, 2)
+    fig, ax = plt.subplots(2, 3)
 
       # plot roll and pitch in 2D plot
     ax[0,0].plot(tsteps, ep_obss[:, 6])
@@ -79,24 +82,27 @@ def main(cfg: DictConfig):
     ax[0,1].plot(tsteps, ep_obss[:, 7])
     ax[0,1].set_xlabel("Pitch")
 
-    ax[1,0].plot(tsteps, dist_to_target)
-    ax[1,0].set_xlabel("Distance to target")
-
     # plot the positions in a 3D plot with the line being a gradient of colors between red and purple, red being the first timestep and purple the last
-    ax[1,1].remove()
-    ax[1,1] = fig.add_subplot(2,2,4, projection='3d')
-    ax[1,1].plot([target[0]], [target[1]], [target[2]], 'ro')
-    ax[1,1].set_xlabel("X")
-    ax[1,1].set_ylabel("Y")
-    ax[1,1].set_zlabel("Z")
-    ax[1,1].set_xlim(-400, 400)
-    ax[1,1].set_ylim(-100, 400)
-    ax[1,1].set_zlim(400, 800)
+    ax[0,2].remove()
+    ax[0,2] = fig.add_subplot(1,3,3, projection='3d')
+    ax[0,2].plot([target[0]], [target[1]], [target[2]], 'ro')
+    ax[0,2].set_xlabel("X")
+    ax[0,2].set_ylabel("Y")
+    ax[0,2].set_zlabel("Z")
+    ax[0,2].set_xlim(-400, 400)
+    ax[0,2].set_ylim(-100, 400)
+    ax[0,2].set_zlim(400, 800)
 
  
     for i in range(ep_obss.shape[0] - 1):
-        ax[1,1].plot(ep_obss[i:i+2, 0], ep_obss[i:i+2, 1], ep_obss[i:i+2, 2], c=plt.cm.plasma(i/ep_obss.shape[0]))
-    
+        ax[0,2].plot(ep_obss[i:i+2, 0], ep_obss[i:i+2, 1], ep_obss[i:i+2, 2], c=plt.cm.plasma(i/ep_obss.shape[0]))
+
+    ax[1,0].plot(tsteps, dist_to_target)
+    ax[1,0].set_xlabel("Distance to target")
+
+    ax[1,1].plot(tsteps, ep_rewards)
+    ax[1,1].set_xlabel("Rewards")
+
     print(f"Last position: {ep_obss[-1, :3]}")
 
     plt.show()
