@@ -10,8 +10,7 @@ from fw_jsbgym.models.aerodynamics import AeroModel
 from fw_flightcontrol.agents.ppo import Agent_PPO
 from fw_flightcontrol.agents.pid import torchPID
 from fw_flightcontrol.utils.eval_utils import RefSequence
-from fw_flightcontrol.utils.train_utils import periodic_eval, make_env, save_model_PPO, sample_refs
-
+from fw_flightcontrol.utils import train_utils
 import wandb
 import gymnasium as gym
 import pandas as pd
@@ -84,14 +83,14 @@ def train(cfg: DictConfig):
     # env setup
     print(f"ENV ID: {cfg_ppo.env_id}")
     envs = gym.vector.SyncVectorEnv(
-        [make_env(cfg_ppo.env_id, cfg.env, cfg_sim.render_mode, None, eval=False, gamma=cfg_ppo.gamma) for i in range(cfg_ppo.num_envs)]
+        [train_utils.make_env(cfg_ppo.env_id, cfg.env, cfg_sim.render_mode, None, eval=False, gamma=cfg_ppo.gamma) for i in range(cfg_ppo.num_envs)]
     )
     unwr_envs = [envs.envs[i].unwrapped for i in range(cfg_ppo.num_envs)]
     print("Single Env Observation Space Shape = ", envs.single_observation_space.shape)
 
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
     agent = Agent_PPO(envs, cfg).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=cfg_ppo.learning_rate, eps=1e-5)
+    optimizer = optim.Adam(agent.parameters(), lr=cfg_ppo.learning_rate, eps=1e-5, weight_decay=cfg_ppo.weight_decay)
     trim_point: TrimPoint = TrimPoint(aircraft_id='x8')
     if "NoVa" in cfg_ppo.env_id or "Vanilla" in cfg_ppo.env_id:
         trim_acts = torch.tensor([trim_point.aileron, trim_point.elevator]).to(device)
@@ -124,7 +123,7 @@ def train(cfg: DictConfig):
     for _ in range(cfg_ppo.num_envs):
         refSeqs[_].sample_steps()
 
-    refs = sample_refs(True, cfg_ppo.env_id, cfg, cfg_ppo)
+    refs = train_utils.sample_refs(True, cfg_ppo.env_id, cfg, cfg_ppo)
 
     for update in tqdm(range(1, num_updates + 1)):
         # Annealing the rate if instructed to do so.
@@ -136,14 +135,14 @@ def train(cfg: DictConfig):
         # save checkpoints periodically
         if cfg_ppo.save_cp and update % 8 == 0:
             run_name = f"ppo_{cfg_ppo.exp_name}_cp{global_step}_{cfg_ppo.seed}"
-            save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
+            train_utils.save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
 
         # run periodic evaluation
         prev_div, _ = divmod(prev_gl_step, cfg_ppo.eval_freq)
         curr_div, _ = divmod(global_step, cfg_ppo.eval_freq)
         print(f"prev_gl_step = {prev_gl_step}, global_step = {global_step}, prev_div = {prev_div}, curr_div = {curr_div}")
         if cfg_ppo.periodic_eval and (prev_div != curr_div or global_step == 0):
-            eval_dict = periodic_eval(cfg_ppo.env_id, cfg_mdp, cfg_sim, envs.envs[0], agent, device)
+            eval_dict = train_utils.periodic_eval(cfg_ppo.env_id, cfg_mdp, cfg_sim, envs.envs[0], agent, device)
             for k, v in eval_dict.items():
                 writer.add_scalar("eval/" + k, v, global_step)
 
@@ -164,10 +163,7 @@ def train(cfg: DictConfig):
             # send initial reference points
             for i in range(cfg_ppo.num_envs):
                 ith_env_step = unwr_envs[i].sim[unwr_envs[i].current_step]
-                if 'AC' in cfg_ppo.env_id:
-                    unwr_envs[i].set_target_state(refs[i, 0], refs[i, 1])
-                elif 'Waypoint' in cfg_ppo.env_id:
-                    unwr_envs[i].set_target_state(refs[i, 0], refs[i, 1], refs[i, 2])
+                unwr_envs[i].set_target_state(refs[i])
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -188,7 +184,7 @@ def train(cfg: DictConfig):
             for env_i, done in enumerate(dones):
                 if done:
                     obs_t1[step][env_i] = obs[step][env_i]
-                    refs[env_i] = sample_refs(False, cfg_ppo.env_id, cfg, cfg_ppo)
+                    refs[env_i] = train_utils.sample_refs(False, cfg_ppo.env_id, cfg, cfg_ppo)
                     # if cfg_ppo.ref_sampler == "beta":
                     #     if cfg_ppo.beta_params is not None:
                     #         roll_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
@@ -374,8 +370,10 @@ def train(cfg: DictConfig):
 
                 # preactivation loss
                 pa_loss = torch.Tensor([0.0]).to(device)
-                if cfg_ppo.env_id not in ["ACNoVaPIDRLAdd-v0", "ACNoVaPIDRL-v0", "WaypointTracking-v0"]:
+                if cfg_ppo.env_id not in ["ACNoVaPIDRLAdd-v0", "ACNoVaPIDRL-v0", "WaypointTracking-v0", "AltitudeTracking-v0"]:
                     pa_loss = torch.linalg.norm(act_means - trim_acts, ord=2)
+                elif cfg_ppo.env_id == "AltitudeTracking-v0":
+                    pa_loss = torch.linalg.norm(act_means - trim_acts[-2:], ord=2)
 
                 loss = pg_loss - cfg_ppo.ent_coef * entropy_loss + v_loss * cfg_ppo.vf_coef \
                       + cfg_ppo.ts_coef * ts_loss + cfg_ppo.ss_coef * ss_loss + cfg_ppo.pa_coef * pa_loss
@@ -412,8 +410,11 @@ def train(cfg: DictConfig):
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         writer.add_scalar("losses/total_loss", loss.item(), global_step)
-        writer.add_scalar("action_std/da", action_std[0], global_step)
-        writer.add_scalar("action_std/de", action_std[1], global_step)
+        if 'Altitude' not in cfg_ppo.env_id:
+            writer.add_scalar("action_std/da", action_std[0], global_step)
+            writer.add_scalar("action_std/de", action_std[1], global_step)
+        else:
+            writer.add_scalar("action_std/de", action_std[0], global_step)
         if cfg_ppo.env_id == "ACBohn-v0":
             writer.add_scalar("action_std/dt", action_std[2], global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
@@ -422,38 +423,9 @@ def train(cfg: DictConfig):
 
     # Evaluate the agent once with a single traj to be plotted in wandb
     if cfg_ppo.final_traj_plot:
-        print("******** Plotting... ***********")
-        pe_env = envs.envs[0]
-        pe_env.eval = True
-        telemetry_file = f"telemetry/{run_name}.csv"
-        cfg.env.jsbsim.eval_sim_options.seed = 10 # set a specific seed for the test traj plot
-        pe_obs, _ = pe_env.reset(options={"render_mode": "log"} | OmegaConf.to_container(cfg_sim.eval_sim_options, resolve=True))
-        pe_env.unwrapped.telemetry_setup(telemetry_file)
-        pe_obs = torch.Tensor(pe_obs).unsqueeze(0).to(device)
-        e_refSeq = RefSequence(num_refs=5)
-        e_refSeq.sample_steps()
-        roll_ref = np.deg2rad(30)
-        pitch_ref = np.deg2rad(15)
-        for step in range(4000):
-            pe_env.unwrapped.set_target_state(roll_ref, pitch_ref)
+        train_utils.final_traj_plot(envs.envs[0], cfg_ppo, cfg_sim, agent, device, run_name)
 
-            action = agent.get_action_and_value(pe_obs)[1][0].detach().cpu().numpy()
-            pe_obs, reward, truncated, terminated, info = pe_env.step(action)
-            pe_obs = torch.Tensor(pe_obs).unsqueeze(0).to(device)
-            done = np.logical_or(truncated, terminated)
-
-            if done:
-                e_refSeq.sample_steps(offset=step)
-                print(f"Episode reward: {info['episode']['r']}")
-                break
-        telemetry_df = pd.read_csv(telemetry_file)
-        telemetry_table = wandb.Table(dataframe=telemetry_df)
-        wandb.log({"FinalTraj/telemetry": telemetry_table})
-    # Even if we don't evaluate, we still want to save the model
-    else:
-        save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
-
-    save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
+    train_utils.save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
 
     envs.close()
     writer.close()

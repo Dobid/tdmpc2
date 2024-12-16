@@ -40,6 +40,7 @@ PPO:
     vf_coef: 0.5 # value function coefficient
     max_grad_norm: 0.5 # max gradient norm for gradient clipping
     target_kl: null # target KL divergence threshold
+    weight_decay: 0.0 # weight decay coefficient
 
     # Personnal customizations to the algo
     ts_coef: 5e-2 # CAPS temporal smoothing coefficient
