@@ -38,10 +38,10 @@ def eval(cfg: DictConfig):
     ppo_agent.eval()
 
     # load the reference sequence and initialize the evaluation arrays
-    simple_ref_data = np.load(f'eval/attitude_control/refs/{cfg.ref_file}.npy')
+    simple_ref_data = np.load(f'eval/attitude_control/targets/{cfg.ref_file}.npy')
 
     # load the jsbsim seeds to apply at each reset and set the first seed
-    jsbsim_seeds = np.load(f'eval/attitude_control/refs/jsbsim_seeds.npy')
+    jsbsim_seeds = np.load(f'eval/attitude_control/targets/jsbsim_seeds.npy')
     cfg_sim.eval_sim_options.seed = float(jsbsim_seeds[0])
 
     # if no render mode, run the simulation for the whole reference sequence given by the .npy file
@@ -80,12 +80,12 @@ def eval(cfg: DictConfig):
         ep_cnt = 0 # episode counter
         ep_step = 0 # step counter within an episode
         step = 0
-        refs = simple_ref_data[ep_cnt]
+        targets = simple_ref_data[ep_cnt]
         # set default target values
-        # refs[0] = np.deg2rad(30)
-        # refs[1] = np.deg2rad(15)
+        # targets[0] = np.deg2rad(30)
+        # targets[1] = np.deg2rad(15)
         while step < total_steps:
-            env.set_target_state(refs)
+            env.set_target_state(targets)
             action = ppo_agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
             obs, reward, terminated, truncated, info = env.step(action)
             if cfg_task.mdp.obs_is_matrix:
@@ -112,7 +112,7 @@ def eval(cfg: DictConfig):
                 ep_fcs_pos_hist = np.array(last_info["fcs_pos_hist"]) # get fcs pos history of the finished episode
                 eps_fcs_fluct.append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # get fcs fluctuation of the episode and append it to the list of all fcs fluctuations
                 if ep_cnt < len(simple_ref_data):
-                    refs = simple_ref_data[ep_cnt]
+                    targets = simple_ref_data[ep_cnt]
             ep_step += 1
             step += 1
 

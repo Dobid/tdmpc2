@@ -37,10 +37,10 @@ def eval(cfg: DictConfig):
     agent.load(cfg.rl.checkpoint)
 
     # load the reference sequence and initialize the evaluation arrays
-    simple_ref_data = np.load(f'eval/refs/{cfg_rl.ref_file}.npy')
+    simple_ref_data = np.load(f'eval/targets/{cfg_rl.ref_file}.npy')
 
     # load the jsbsim seeds to apply at each reset and set the first seed
-    jsbsim_seeds = np.load(f'eval/refs/jsbsim_seeds.npy')
+    jsbsim_seeds = np.load(f'eval/targets/jsbsim_seeds.npy')
     cfg_sim.eval_sim_options.seed = float(jsbsim_seeds[0])
 
     # set default target values
@@ -83,8 +83,8 @@ def eval(cfg: DictConfig):
         ep_cnt = 0 # episode counter
         ep_step = 0 # step counter within an episode
         step, t = 0, 0
-        refs = simple_ref_data[ep_cnt]
-        roll_ref, pitch_ref = refs[0], refs[1]
+        targets = simple_ref_data[ep_cnt]
+        roll_ref, pitch_ref = targets[0], targets[1]
         # default target values
         # roll_ref = np.deg2rad(-10)
         # pitch_ref = np.deg2rad(15)
@@ -133,8 +133,8 @@ def eval(cfg: DictConfig):
                 ep_fcs_pos_hist = np.array(last_info["fcs_pos_hist"]) # get fcs pos history of the finished episode
                 eps_fcs_fluct.append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # get fcs fluctuation of the episode and append it to the list of all fcs fluctuations
                 if ep_cnt < len(simple_ref_data):
-                    refs = simple_ref_data[ep_cnt]
-                roll_ref, pitch_ref = refs[0], refs[1]
+                    targets = simple_ref_data[ep_cnt]
+                roll_ref, pitch_ref = targets[0], targets[1]
             ep_step += 1
             step += 1
 
