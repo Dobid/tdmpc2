@@ -62,8 +62,6 @@ altitude_seq: np.ndarray = np.array([[550], [570], [590], [600], [620], [640], [
 # Run periodic attitude control evaluation during training
 def periodic_eval_AC(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
     """Periodically evaluate a given agent."""
-    print("*** Evaluating the agent ***")
-    env.eval = True
     ep_rewards = []
     dif_obs = []
     dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
@@ -124,7 +122,6 @@ def periodic_eval_AC(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
         medium_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[1, :, :, obs_hist_size-1, 7])))
         hard_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, :, obs_hist_size-1, 6])))
         hard_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, :, obs_hist_size-1, 7])))
-    env.eval = False
 
     return dict(
         episode_reward=np.nanmean(ep_rewards),
@@ -196,7 +193,7 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         # env = gym.wrappers.NormalizeObservation(env)
-        # env = MyNormalizeObservation(env, eval=eval)
+        env = MyNormalizeObservation(env, eval=eval)
         if not eval:
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         return env
@@ -204,14 +201,14 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
     return thunk
 
 
-def sample_refs(init_ref, env_id, cfg, cfg_rl):
-    refs = None
+def sample_targets(single_target, env_id, cfg, cfg_rl):
+    targets = None
     if 'AC' in env_id:
         roll_high = np.full((cfg_rl.num_envs, 1), np.deg2rad(cfg.roll_limit))
         pitch_high = np.full((cfg_rl.num_envs, 1), np.deg2rad(cfg.pitch_limit))
-        roll_refs = np.random.uniform(-roll_high, roll_high)
-        pitch_refs = np.random.uniform(-pitch_high, pitch_high)
-        refs = np.hstack((roll_refs, pitch_refs))
+        roll_targets = np.random.uniform(-roll_high, roll_high)
+        pitch_targets = np.random.uniform(-pitch_high, pitch_high)
+        targets = np.hstack((roll_targets, pitch_targets))
     elif 'Waypoint' in cfg_rl.env_id:
         # xy_lows = np.full((cfg_rl.num_envs, 2), 50)
         # xy_highs = np.full((cfg_rl.num_envs, 2), 100)
@@ -219,18 +216,18 @@ def sample_refs(init_ref, env_id, cfg, cfg_rl):
         # x_ref = np.zeros((cfg_rl.num_envs, 1))
         # y_ref = np.random.uniform(250, 350, (cfg_rl.num_envs, 1))
         # z_ref = np.random.uniform(550, 650, (cfg_rl.num_envs, 1))
-        x_refs = np.full((cfg_rl.num_envs, 1), 0)
-        y_refs = np.full((cfg_rl.num_envs, 1), 300)
-        z_refs = np.full((cfg_rl.num_envs, 1), 600)
-        refs = np.hstack((x_refs, y_refs, z_refs))
+        x_targets = np.full((cfg_rl.num_envs, 1), 0)
+        y_targets = np.full((cfg_rl.num_envs, 1), 300)
+        z_targets = np.full((cfg_rl.num_envs, 1), 600)
+        targets = np.hstack((x_targets, y_targets, z_targets))
     elif 'Altitude' in cfg_rl.env_id:
-        z_refs = np.random.uniform(550, 650, (cfg_rl.num_envs, 1))
-        refs = z_refs
-    # if it's not the initial reference return the first element of the list
-    if not init_ref:
-        refs = refs[0]
-    assert refs is not None
-    return refs
+        z_targets = np.random.uniform(550, 650, (cfg_rl.num_envs, 1))
+        targets = z_targets
+    # take the first sampled target if we want a single target and not a batch of targets for n envs
+    if single_target:
+        targets = targets[0]
+    assert targets is not None
+    return targets
 
 
 # Save the model PPO
@@ -278,7 +275,10 @@ def final_traj_plot(e_env, cfg_rl, cfg_sim, agent, device, run_name):
 
     for step in range(4000):
         e_env.unwrapped.set_target_state(target)
-        action = agent.get_action_and_value(e_obs)[1][0].detach().cpu().numpy()
+        if isinstance(agent, Actor_SAC):
+            action = agent.get_action(e_obs)[2].squeeze_().detach().cpu().numpy()
+        elif isinstance(agent, Agent_PPO):
+            action = agent.get_action_and_value(e_obs)[1][0].detach().cpu().numpy()
         e_obs, reward, truncated, terminated, info = e_env.step(action)
         e_obs = torch.Tensor(e_obs).unsqueeze(0).to(device)
         done = np.logical_or(truncated, terminated)

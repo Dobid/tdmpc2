@@ -9,7 +9,6 @@ from fw_jsbgym.trim.trim_point import TrimPoint
 from fw_jsbgym.models.aerodynamics import AeroModel
 from fw_flightcontrol.agents.ppo import Agent_PPO
 from fw_flightcontrol.agents.pid import torchPID
-from fw_flightcontrol.utils.eval_utils import RefSequence
 from fw_flightcontrol.utils import train_utils
 import wandb
 import gymnasium as gym
@@ -118,12 +117,7 @@ def train(cfg: DictConfig):
     next_terminated = torch.zeros(cfg_ppo.num_envs).to(device)
     num_updates = cfg_ppo.total_timesteps // cfg_ppo.batch_size
 
-    # Generate a reference sequence and sample the first steps
-    refSeqs = [RefSequence(num_refs=3, min_step_bound=600, max_step_bound=700) for _ in range(cfg_ppo.num_envs)]
-    for _ in range(cfg_ppo.num_envs):
-        refSeqs[_].sample_steps()
-
-    refs = train_utils.sample_refs(True, cfg_ppo.env_id, cfg, cfg_ppo)
+    targets = train_utils.sample_targets(False, cfg_ppo.env_id, cfg, cfg_ppo)
 
     for update in tqdm(range(1, num_updates + 1)):
         # Annealing the rate if instructed to do so.
@@ -150,7 +144,7 @@ def train(cfg: DictConfig):
 
         # at half the updates, change the beta params
         if cfg_ppo.ref_sampler == "beta" and global_step > 7.5e5:
-            print("change beta params, make the refs harder")
+            print("change beta params, make the targets harder")
             cfg_ppo.beta_params = [0.1, 0.1]
 
         for step in range(0, cfg_ppo.num_steps):
@@ -160,10 +154,10 @@ def train(cfg: DictConfig):
             obs[step] = next_obs
             terminateds[step] = next_terminated
 
-            # send initial reference points
+            # send reference (target) points
             for i in range(cfg_ppo.num_envs):
                 ith_env_step = unwr_envs[i].sim[unwr_envs[i].current_step]
-                unwr_envs[i].set_target_state(refs[i])
+                unwr_envs[i].set_target_state(targets[i])
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -184,25 +178,25 @@ def train(cfg: DictConfig):
             for env_i, done in enumerate(dones):
                 if done:
                     obs_t1[step][env_i] = obs[step][env_i]
-                    refs[env_i] = train_utils.sample_refs(False, cfg_ppo.env_id, cfg, cfg_ppo)
+                    targets[env_i] = train_utils.sample_targets(True, cfg_ppo.env_id, cfg, cfg_ppo)
                     # if cfg_ppo.ref_sampler == "beta":
                     #     if cfg_ppo.beta_params is not None:
-                    #         roll_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
-                    #         pitch_refs[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * pitch_limit*2 - pitch_limit
+                    #         roll_targets[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * roll_limit*2 - roll_limit
+                    #         pitch_targets[env_i] = np.random.beta(cfg_ppo.beta_params[0], cfg_ppo.beta_params[1]) * pitch_limit*2 - pitch_limit
                     #         print(f"Sampled from beta with params {cfg_ppo.beta_params}")
 
-                    # print(f"Env {env_i} done, new refs : "\
-                    #       f"roll = {np.rad2deg(refs[env_i, 0]):.3f}, "\
-                    #       f"pitch = {np.rad2deg(refs[env_i, 1]):.3f}")
+                    # print(f"Env {env_i} done, new targets : "\
+                    #       f"roll = {np.rad2deg(targets[env_i, 0]):.3f}, "\
+                    #       f"pitch = {np.rad2deg(targets[env_i, 1]):.3f}")
                     if 'AC' in cfg_ppo.env_id:
-                        print(f"Env {env_i} done, new refs : "\
-                            f"roll = {np.rad2deg(refs[env_i, 0]):.3f}, "\
-                            f"pitch = {np.rad2deg(refs[env_i, 1]):.3f}")
+                        print(f"Env {env_i} done, new targets : "\
+                            f"roll = {np.rad2deg(targets[env_i, 0]):.3f}, "\
+                            f"pitch = {np.rad2deg(targets[env_i, 1]):.3f}")
                     elif 'Waypoint' in cfg_ppo.env_id:
-                        print(f"Env {env_i} done, new refs : "\
-                              f"x = {refs[env_i, 0]:.3f}, "\
-                              f"y = {refs[env_i, 1]:.3f}, "\
-                              f"z = {refs[env_i, 2]:.3f}")
+                        print(f"Env {env_i} done, new targets : "\
+                              f"x = {targets[env_i, 0]:.3f}, "\
+                              f"y = {targets[env_i, 1]:.3f}, "\
+                              f"z = {targets[env_i, 2]:.3f}")
 
                 else:
                     obs_t1[step][env_i] = next_obs[env_i]

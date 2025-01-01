@@ -23,6 +23,7 @@ SAC:
     noise_clip: 0.5 # noise clip parameter of the Target Policy Smoothing Regularization
     alpha: 0.2 # Entropy regularization coefficient.
     autotune: True # automatic tuning of the entropy coefficient
+    num_envs: 1 # number of parallel environments (SAC only supports 1)
 
     # periodic evaluation during training
     periodic_eval: True

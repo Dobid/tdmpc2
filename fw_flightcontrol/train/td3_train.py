@@ -247,7 +247,7 @@ if __name__ == "__main__":
     pitch_limit = np.deg2rad(30)
     roll_ref = np.random.uniform(-roll_limit, roll_limit)
     pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-    print(f"Initial refs : roll = {roll_ref}, pitch = {pitch_ref}")
+    print(f"Initial targets : roll = {roll_ref}, pitch = {pitch_ref}")
     obs, _ = envs.reset(options=sim_options)
     for global_step in range(args.total_timesteps):
         if args.track:

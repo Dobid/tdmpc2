@@ -12,7 +12,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
-from fw_flightcontrol.utils.train_utils import periodic_eval, save_model_SAC, make_env
+from fw_flightcontrol.utils import train_utils
 from fw_flightcontrol.agents.sac import Actor_SAC, SoftQNetwork_SAC
 
 
@@ -77,7 +77,7 @@ def train(cfg: DictConfig):
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(cfg_sac.env_id, cfg.env, cfg_sim.render_mode, None, eval=False, gamma=cfg_sac.gamma)]
+        [train_utils.make_env(cfg_sac.env_id, cfg.env, cfg_sim.render_mode, None, eval=False, gamma=cfg_sac.gamma)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
     print("Single Env Observation Space Shape = ", envs.single_observation_space.shape)
@@ -112,10 +112,7 @@ def train(cfg: DictConfig):
     )
 
     # initial roll and pitch references
-    roll_limit = np.deg2rad(cfg.roll_limit)
-    pitch_limit = np.deg2rad(cfg.pitch_limit)
-    roll_ref = np.random.uniform(-roll_limit, roll_limit)
-    pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
+    targets = train_utils.sample_targets(True, cfg_sac.env_id, cfg, cfg_sac)
     global_step = 0
     prev_gl_step = 0
 
@@ -131,14 +128,13 @@ def train(cfg: DictConfig):
         prev_div, _ = divmod(prev_gl_step, cfg_sac.eval_freq)
         curr_div, _ = divmod(global_step, cfg_sac.eval_freq)
         if cfg_sac.periodic_eval and (prev_div != curr_div or global_step == 0):
-            print(f"prev_gl_step = {prev_gl_step}, global_step = {global_step}, prev_div = {prev_div}, curr_div = {curr_div}")
-            eval_dict = periodic_eval(cfg_mdp, cfg_sim, envs.envs[0], actor, device)
+            eval_dict = train_utils.periodic_eval(cfg_sac.env_id, cfg_mdp, cfg_sim, envs.envs[0], actor, device)
             for k, v in eval_dict.items():
                 writer.add_scalar("eval/" + k, v, global_step)
         prev_gl_step = global_step
 
         # ALGO LOGIC: put action logic here
-        unwr_envs.set_target_state(roll_ref, pitch_ref)
+        unwr_envs.set_target_state(targets)
         if global_step < cfg_sac.learning_starts:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
@@ -150,9 +146,7 @@ def train(cfg: DictConfig):
 
         done = np.logical_or(terminations, truncations)
         if done:
-            roll_ref = np.random.uniform(-roll_limit, roll_limit)
-            pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-            print(f"Env Done, new refs : roll = {roll_ref}, pitch = {pitch_ref}")
+            targets = train_utils.sample_targets(True, cfg_sac.env_id, cfg, cfg_sac)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
@@ -246,32 +240,9 @@ def train(cfg: DictConfig):
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
 
     if cfg_sac.final_traj_plot:
-        print("******** Plotting... ***********")
-        pe_env = envs.envs[0]
-        pe_env.eval = True
-        telemetry_file = f"telemetry/{run_name}.csv"
-        cfg.env.jsbsim.eval_sim_options.seed = 10 # set a specific seed for the test traj plot
-        pe_obs, _ = pe_env.reset(options={"render_mode": "log"} | OmegaConf.to_container(cfg_sim.eval_sim_options, resolve=True))
-        pe_env.unwrapped.telemetry_setup(telemetry_file)
-        roll_ref = np.deg2rad(30)
-        pitch_ref = np.deg2rad(15)
-        for step in range(4000):
-            pe_env.unwrapped.set_target_state(roll_ref, pitch_ref)
+        train_utils.final_traj_plot(envs.envs[0], cfg_sac, cfg_sim, actor, device, run_name)
 
-            action = actor.get_action(torch.Tensor(pe_obs).unsqueeze(0).to(device))[2].squeeze_().detach().cpu().numpy()
-            pe_obs, reward, truncated, terminated, info = pe_env.step(action)
-            done = np.logical_or(truncated, terminated)
-
-            if done:
-                print(f"Episode reward: {info['episode']['r']}")
-                r_per_step = info["episode"]["r"]/info["episode"]["l"]
-                break
-        telemetry_df = pd.read_csv(telemetry_file)
-        telemetry_table = wandb.Table(dataframe=telemetry_df)
-        wandb.log({"FinalTraj/telemetry": telemetry_table})
-
-
-    save_model_SAC(run_name, actor, qf1, qf2, cfg_sac.seed)
+    train_utils.save_model_SAC(run_name, actor, qf1, qf2, cfg_sac.seed)
     envs.close()
     writer.close()
 
