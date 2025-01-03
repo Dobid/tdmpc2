@@ -12,7 +12,6 @@ from fw_flightcontrol.agents.pid import torchPID
 from fw_flightcontrol.utils import train_utils
 import wandb
 import gymnasium as gym
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -417,7 +416,7 @@ def train(cfg: DictConfig):
 
     # Evaluate the agent once with a single traj to be plotted in wandb
     if cfg_ppo.final_traj_plot:
-        train_utils.final_traj_plot(envs.envs[0], cfg_ppo, cfg_sim, agent, device, run_name)
+        train_utils.final_traj_plot(envs.envs[0], cfg_ppo.env_id, cfg_sim, agent, device, run_name)
 
     train_utils.save_model_PPO(save_path, run_name, agent, envs.envs[0], cfg_ppo.seed)
 

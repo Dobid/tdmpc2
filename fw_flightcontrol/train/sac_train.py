@@ -240,7 +240,7 @@ def train(cfg: DictConfig):
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
 
     if cfg_sac.final_traj_plot:
-        train_utils.final_traj_plot(envs.envs[0], cfg_sac, cfg_sim, actor, device, run_name)
+        train_utils.final_traj_plot(envs.envs[0], cfg_sac.env_id, cfg_sim, actor, device, run_name)
 
     train_utils.save_model_SAC(run_name, actor, qf1, qf2, cfg_sac.seed)
     envs.close()
