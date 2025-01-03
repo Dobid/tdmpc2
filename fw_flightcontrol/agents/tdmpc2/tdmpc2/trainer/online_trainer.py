@@ -4,9 +4,9 @@ import numpy as np
 import torch
 import pandas as pd
 from tensordict.tensordict import TensorDict
-from omegaconf import OmegaConf
 
 from trainer.base import Trainer
+from fw_flightcontrol.utils import train_utils
 
 
 class OnlineTrainer(Trainer):
@@ -39,17 +39,7 @@ class OnlineTrainer(Trainer):
 												]
 											])
 		
-		# self.ref_seq: np.ndarray = np.array([
-		# 										[	# roll			,pitch
-		# 											[np.deg2rad(25), np.deg2rad(15)], # easy
-		# 										],
-		# 										[
-		# 											[np.deg2rad(40), np.deg2rad(22)], # medium
-		# 										],
-		# 										[
-		# 											[np.deg2rad(55), np.deg2rad(28)], # hard
-		# 										]
-		# 									])
+
 
 	def common_metrics(self):
 		"""Return a dictionary of current metrics."""
@@ -58,98 +48,6 @@ class OnlineTrainer(Trainer):
 			episode=self._ep_idx,
 			total_time=time() - self._start_time,
 		)
-
-	def eval(self):
-		"""Evaluate a TD-MPC2 agent."""
-		ep_rewards, ep_successes = [], []
-		dif_obs = []
-		dif_fcs_fluct = [] # dicts storing all obs across all episodes and fluctuation of the flight controls for all episodes
-		i = 0
-		for dif_idx, ref_dif in enumerate(self.ref_seq): # iterate over the difficulty levels
-			dif_obs.append([])
-			dif_fcs_fluct.append([])
-			for ref_idx, ref_ep in enumerate(ref_dif): # iterate over the ref for 1 episode
-				obs, info = self.env.reset(self.cfg_all.env.jsbsim.eval_sim_options)
-				obs, info, done, ep_reward, t = obs, info, False, 0, 0
-				if self.cfg.save_video:
-					self.logger.video.init(self.env, enabled=(i==0))
-				while not done:
-					# Set roll and pitch references
-					self.env.set_target_state(ref_ep[0], ref_ep[1]) # 0: roll, 1: pitch
-					action = self.agent.act(obs, t0=t==0, eval_mode=True)
-					obs, reward, done, info = self.env.step(action)
-					dif_obs[dif_idx].append(info['non_norm_obs']) # append the non-normalized observation to the list
-					ep_reward += reward
-					t += 1
-					if self.cfg.save_video:
-						self.logger.video.record(self.env)
-
-				ep_fcs_pos_hist = np.array(info['fcs_pos_hist'])
-				dif_fcs_fluct[dif_idx].append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # compute the fcs fluctuation of the episode being reset and append to the list
-
-				ep_rewards.append(ep_reward)
-				ep_successes.append(info['success'])
-				if self.cfg.save_video:
-					self.logger.video.save(self._step)
-				i += 1
-		
-		# computing the mean fcs fluctuation across all episodes for each difficulty level
-		dif_fcs_fluct = np.array(dif_fcs_fluct)
-		easy_fcs_fluct = np.mean(np.array(dif_fcs_fluct[0]), axis=0)
-		medium_fcs_fluct = np.mean(np.array(dif_fcs_fluct[1]), axis=0)
-		hard_fcs_fluct = np.mean(np.array(dif_fcs_fluct[2]), axis=0)
-
-		# computing the rmse of the roll and pitch angles across all episodes for each difficulty level
-		dif_obs = np.array(dif_obs)
-		easy_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[0, :, 6])))
-		easy_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[0, :, 7])))
-		medium_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[1, :, 6])))
-		medium_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[1, :, 7])))
-		hard_roll_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, 6])))
-		hard_pitch_rmse = np.sqrt(np.mean(np.square(dif_obs[2, :, 7])))
-
-		return dict(
-			episode_reward=np.nanmean(ep_rewards),
-			episode_success=np.nanmean(ep_successes),
-			easy_roll_rmse=easy_roll_rmse,
-			easy_pitch_rmse=easy_pitch_rmse,
-			medium_roll_rmse=medium_roll_rmse,
-			medium_pitch_rmse=medium_pitch_rmse,
-			hard_roll_rmse=hard_roll_rmse,
-			hard_pitch_rmse=hard_pitch_rmse,
-			easy_ail_fluct=easy_fcs_fluct[0],
-			easy_ele_fluct=easy_fcs_fluct[1],
-			medium_ail_fluct=medium_fcs_fluct[0],
-			medium_ele_fluct=medium_fcs_fluct[1],
-			hard_ail_fluct=hard_fcs_fluct[0],
-			hard_ele_fluct=hard_fcs_fluct[1],
-		)
-	
-
-	def log_test_traj(self):
-		"""
-			Log the trajectory telemetry of a test episode.
-			Done at the end of the training, to give an graphical idea of the agent's performance.
-		"""
-		telemetry_file = self.logger._log_dir / 'telemetry.csv'
-		self.cfg_all.env.jsbsim.eval_sim_options.seed = 10
-		obs, info = self.env.reset(options={'render_mode': 'log'} | OmegaConf.to_container(self.cfg_all.env.jsbsim.eval_sim_options, resolve=True))
-		obs, info, done, ep_reward, t = obs, info, False, 0, 0
-		self.env.telemetry_setup(telemetry_file)
-		roll_ref = np.deg2rad(30)
-		pitch_ref = np.deg2rad(15)
-		while not done:
-			# Set roll and pitch references
-			self.env.set_target_state(roll_ref, pitch_ref) # 0: roll, 1: pitch
-			action = self.agent.act(obs, t0=t==0, eval_mode=True)
-			obs, reward, done, info = self.env.step(action)
-			ep_reward += reward
-			t += 1
-		print(f"End of training test trajectory episode reward: {ep_reward}")
-		telemetry_df = pd.read_csv(telemetry_file)
-		telemetry_table = self.logger._wandb.Table(dataframe=telemetry_df)
-		self.logger._wandb.log({"telemetry": telemetry_table})
-
 
 	def to_td(self, obs, action=None, reward=None):
 		"""Creates a TensorDict for a new episode."""
@@ -171,9 +69,7 @@ class OnlineTrainer(Trainer):
 	def train(self):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, True
-		# initial roll and pitch references
-		roll_limit = np.deg2rad(self.cfg.roll_limit)
-		pitch_limit = np.deg2rad(self.cfg.pitch_limit)
+		env_id = f"{self.cfg_all.rl.task}-v0"
 		while self._step <= self.cfg.steps:
 
 			# Evaluate agent periodically
@@ -186,7 +82,9 @@ class OnlineTrainer(Trainer):
 				if self.logger._wandb:
 					self.logger._wandb.log({"global_step": self._step})
 				if eval_next and self.cfg.periodic_eval:
-					eval_metrics = self.eval()
+					# eval_metrics = self.eval()
+					eval_metrics = train_utils.periodic_eval(env_id, self.cfg_all.env.task.mdp, self.cfg_all.env.jsbsim, 
+															self.env, self.agent, self.agent.device)
 					eval_metrics.update(self.common_metrics())
 					self.logger.log(eval_metrics, 'eval')
 					eval_next = False
@@ -203,20 +101,29 @@ class OnlineTrainer(Trainer):
 				# reset the environment with training options
 				obs, info = self.env.reset(options=self.cfg_all.env.jsbsim.train_sim_options)
 				self._tds = [self.to_td(obs)]
-				roll_ref = np.random.uniform(-roll_limit, roll_limit)
-				pitch_ref = np.random.uniform(-pitch_limit, pitch_limit)
-				print(f"Env Done, new ref : roll = {np.deg2rad(roll_ref)}, pitch = {np.deg2rad(pitch_ref)} sampled")
+				targets = train_utils.sample_targets(True, env_id, self.cfg_all, self.cfg_all.rl)
+				if 'AC' in env_id:
+					print(f"Env done, new targets : "\
+						f"roll = {np.rad2deg(targets[0]):.3f}, "\
+						f"pitch = {np.rad2deg(targets[1]):.3f}")
+				elif 'Waypoint' in env_id:
+					print(f"Env done, new targets : "\
+							f"x = {targets[0]:.3f}, "\
+							f"y = {targets[1]:.3f}, "\
+							f"z = {targets[2]:.3f}")
 
 			# Set roll and pitch references
 			# self.env.unwrapped.set_target_state(roll_ref, pitch_ref)
-			self.env.set_target_state(roll_ref, pitch_ref)
+			self.env.set_target_state(targets)
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
 				action = self.agent.act(obs, t0=len(self._tds)==1)
 			else:
 				action = self.env.rand_act()
-			obs, reward, done, info = self.env.step(action)
+			obs, reward, term, trunc, info = self.env.step(action)
+			done = np.logical_or(term, trunc)
+
 			self._tds.append(self.to_td(obs, action, reward))
 
 			# Update agent
@@ -234,6 +141,7 @@ class OnlineTrainer(Trainer):
 
 		# Final plot of a trajectory into wandb
 		if self.cfg.final_traj_plot:
-			self.log_test_traj()
+			train_utils.final_traj_plot(self.env, env_id, self.cfg_all.env.jsbsim, 
+										self.agent, self.agent.device, self.logger.exp_name)
 
 		self.logger.finish(self.agent)

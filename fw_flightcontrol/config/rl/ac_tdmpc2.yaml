@@ -43,3 +43,5 @@ ts_coef: 0.0
 
 # use mppi type planning or pi policy direct output
 mpc: true
+
+num_envs: 1 # number of parallel environments (tdmpc2 only support 1 atm)

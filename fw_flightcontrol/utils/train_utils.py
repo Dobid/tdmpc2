@@ -5,10 +5,11 @@ import gymnasium as gym
 import fw_jsbgym
 import pandas as pd
 import wandb
-from omegaconf import OmegaConf
 from fw_flightcontrol.agents.sac import Actor_SAC
 from fw_flightcontrol.agents.ppo import Agent_PPO
+from fw_flightcontrol.agents.tdmpc2.tdmpc2.tdmpc2 import TDMPC2
 from fw_flightcontrol.utils.gym_utils import MyNormalizeObservation
+from omegaconf import DictConfig, OmegaConf
 
 # Global variables
 # Sequence of roll and pitch references for the the periodic evaluation
@@ -32,6 +33,18 @@ attitude_seq: np.ndarray = np.array([
                                             [np.deg2rad(-55), np.deg2rad(28)]
                                         ]
                                     ])
+
+# attitude_seq: np.ndarray = np.array([
+# 										[	# roll			,pitch
+# 											[np.deg2rad(25), np.deg2rad(15)], # easy
+# 										],
+# 										[
+# 											[np.deg2rad(40), np.deg2rad(22)], # medium
+# 										],
+# 										[
+# 											[np.deg2rad(55), np.deg2rad(28)], # hard
+# 										]
+# 									])
 
 # Waypoint Tracking sequence for the periodic evaluation
 waypoint_seq: np.ndarray = np.array([
@@ -70,7 +83,7 @@ def periodic_eval_AC(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
         dif_fcs_fluct.append([])
         for ref_idx, ref_ep in enumerate(ref_dif): # iterate over the ref for 1 episode
             obs, info = env.reset(options=cfg_sim.eval_sim_options)
-            obs, info, done, ep_reward = torch.Tensor(obs).unsqueeze(0).to(device), info, False, 0
+            obs, info, done, ep_reward, t = torch.Tensor(obs).unsqueeze(0).to(device), info, False, 0, 0
             while not done:
                 env.set_target_state(ref_ep)
                 with torch.no_grad():
@@ -78,11 +91,14 @@ def periodic_eval_AC(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
                         action = agent.get_action(obs)[2].squeeze_(0).detach().cpu().numpy()
                     elif isinstance(agent, Agent_PPO):
                         action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
+                    elif isinstance(agent, TDMPC2):
+                        action = agent.act(obs.squeeze(0), t0=t==0, eval_mode=True)
                 obs, reward, term, trunc, info = env.step(action)
                 obs = torch.Tensor(obs).unsqueeze(0).to(device)
                 done = np.logical_or(term, trunc)
                 dif_obs[dif_idx].append(info['non_norm_obs']) # append the non-normalized observation to the list
                 ep_reward += info['non_norm_reward']
+                t += 1
 
             ep_fcs_pos_hist = np.array(info['fcs_pos_hist'])
             dif_fcs_fluct[dif_idx].append(np.mean(np.abs(np.diff(ep_fcs_pos_hist, axis=0)), axis=0)) # compute the fcs fluctuation of the episode being reset and append to the list
@@ -193,7 +209,7 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         # env = gym.wrappers.NormalizeObservation(env)
-        env = MyNormalizeObservation(env, eval=eval)
+        # env = MyNormalizeObservation(env, eval=eval)
         if not eval:
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         return env
@@ -201,7 +217,7 @@ def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamm
     return thunk
 
 
-def sample_targets(single_target, env_id, cfg, cfg_rl):
+def sample_targets(single_target: bool, env_id: str, cfg: DictConfig, cfg_rl: DictConfig):
     targets = None
     if 'AC' in env_id:
         roll_high = np.full((cfg_rl.num_envs, 1), np.deg2rad(cfg.roll_limit))
@@ -258,19 +274,20 @@ def save_model_SAC(run_name, actor, qf1, qf2, seed):
 
 
 # Plot 
-def final_traj_plot(e_env, cfg_rl, cfg_sim, agent, device, run_name):
+def final_traj_plot(e_env, env_id, cfg_sim, agent, device, run_name):
     print("******** Plotting... ***********")
     e_env.eval = True
     telemetry_file = f"telemetry/{run_name}.csv"
     cfg_sim.eval_sim_options.seed = 10 # set a specific seed for the test traj plot
-    e_obs, _ = e_env.reset(options={"render_mode": "log"} | OmegaConf.to_container(cfg_sim.eval_sim_options, resolve=True))
+    e_obs, info = e_env.reset(options={"render_mode": "log"} | OmegaConf.to_container(cfg_sim.eval_sim_options, resolve=True))
+    e_obs, info, done, ep_reward, t = e_obs, info, False, 0, 0
     e_env.unwrapped.telemetry_setup(telemetry_file)
     e_obs = torch.Tensor(e_obs).unsqueeze(0).to(device)
-    if 'AC' in cfg_rl.env_id:
+    if 'AC' in env_id:
         roll_ref = np.deg2rad(30)
         pitch_ref = np.deg2rad(15)
         target = np.array([roll_ref, pitch_ref])
-    elif 'Altitude' in cfg_rl.env_id:
+    elif 'Altitude' in env_id:
         target = np.array([630])
 
     for step in range(4000):
@@ -279,9 +296,12 @@ def final_traj_plot(e_env, cfg_rl, cfg_sim, agent, device, run_name):
             action = agent.get_action(e_obs)[2].squeeze_().detach().cpu().numpy()
         elif isinstance(agent, Agent_PPO):
             action = agent.get_action_and_value(e_obs)[1][0].detach().cpu().numpy()
+        elif isinstance(agent, TDMPC2):
+            action = agent.act(e_obs.squeeze(0), t0=step==0, eval_mode=True)
         e_obs, reward, truncated, terminated, info = e_env.step(action)
         e_obs = torch.Tensor(e_obs).unsqueeze(0).to(device)
         done = np.logical_or(truncated, terminated)
+        t += 1
 
         if done:
             print(f"Episode reward: {info['episode']['r']}")
