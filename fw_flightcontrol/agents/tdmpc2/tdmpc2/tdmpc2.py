@@ -1,10 +1,15 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import sys
+import os
+
+sys.path.append(f'{os.path.dirname(os.path.abspath(__file__))}/../tdmpc2/')
 
 from common import math
 from common.scale import RunningScale
 from common.world_model import WorldModel
+from omegaconf import OmegaConf
 
 
 class TDMPC2:
@@ -30,9 +35,13 @@ class TDMPC2:
 		self.model.eval()
 		self.scale = RunningScale(cfg)
 		self.cfg.iterations += 2*int(cfg.action_dim >= 20) # Heuristic for large action spaces
-		self.discount = torch.tensor(
-			[self._get_discount(ep_len) for ep_len in cfg.episode_lengths], device='cuda'
-		) if self.cfg.multitask else self._get_discount(cfg.episode_length)
+		if OmegaConf.is_missing(cfg, 'discount'):
+			self.discount = torch.tensor(
+				[self._get_discount(ep_len) for ep_len in cfg.episode_lengths], device='cuda'
+			) if self.cfg.multitask else self._get_discount(cfg.episode_length)
+		else:
+			self.discount = cfg.discount
+		print(f"Discount factor: {self.discount}")
 
 	def _get_discount(self, episode_length):
 		"""
