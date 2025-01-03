@@ -92,7 +92,8 @@ def eval(cfg: DictConfig):
             env.set_target_state(roll_ref, pitch_ref)
             # action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
             action = agent.act(obs, t0=t==0, eval_mode=True)
-            obs, reward, done, info = env.step(action)
+            obs, reward, term, trunc, info = env.step(action)
+            done = np.logical_or(term, trunc)
 
             # imagined trajectory
             if cfg.rl.im_traj:

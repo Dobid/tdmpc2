@@ -36,7 +36,8 @@ class TensorWrapper(gym.Wrapper):
 
 	def step(self, action):
 		obs, reward, terminated, truncated, info = self.env.step(action.numpy())
-		done = np.logical_or(terminated, truncated)
+		# uncomment if you want to use other envs than JSBSim
+		# done = np.logical_or(terminated, truncated)
 		info = defaultdict(float, info)
 		info['success'] = float(info['success'])
-		return self._obs_to_tensor(obs), torch.tensor(reward, dtype=torch.float32), done, info
+		return self._obs_to_tensor(obs), torch.tensor(reward, dtype=torch.float32), terminated, truncated, info
