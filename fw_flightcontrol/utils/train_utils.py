@@ -161,7 +161,7 @@ def periodic_eval_alt(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
     non_norm_obs = []
     for ref_ep in ref_seq: # iterate over the ref for 1 episode
         obs, info = env.reset(options=cfg_sim.eval_sim_options)
-        obs, info, done, ep_reward = torch.Tensor(obs).unsqueeze(0).to(device), info, False, 0
+        obs, info, done, ep_reward, t = torch.Tensor(obs).unsqueeze(0).to(device), info, False, 0, 0
         while not done:
             env.set_target_state(np.array(ref_ep))
             with torch.no_grad():
@@ -169,11 +169,14 @@ def periodic_eval_alt(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
                     action = agent.get_action(obs)[2].squeeze_(0).detach().cpu().numpy()
                 elif isinstance(agent, Agent_PPO):
                     action = agent.get_action_and_value(obs)[1].squeeze_(0).detach().cpu().numpy()
+                elif isinstance(agent, TDMPC2):
+                    action = agent.act(obs.squeeze(0), t0=t==0, eval_mode=True)
             obs, reward, term, trunc, info = env.step(action)
             obs = torch.Tensor(obs).unsqueeze(0).to(device)
             done = np.logical_or(term, trunc)
             non_norm_obs.append(info['non_norm_obs']) # append the non-normalized observation to the list
             ep_reward += info['non_norm_reward']
+            t += 1
 
         ep_rewards.append(ep_reward)
     non_norm_obs = np.array(non_norm_obs)
@@ -225,7 +228,7 @@ def sample_targets(single_target: bool, env_id: str, cfg: DictConfig, cfg_rl: Di
         roll_targets = np.random.uniform(-roll_high, roll_high)
         pitch_targets = np.random.uniform(-pitch_high, pitch_high)
         targets = np.hstack((roll_targets, pitch_targets))
-    elif 'Waypoint' in cfg_rl.env_id:
+    elif 'Waypoint' in env_id:
         # xy_lows = np.full((cfg_rl.num_envs, 2), 50)
         # xy_highs = np.full((cfg_rl.num_envs, 2), 100)
         # xy_ref = np.random.uniform(xy_lows, xy_highs) * np.random.choice([-1, 1], (cfg_rl.num_envs, 2))
@@ -236,7 +239,7 @@ def sample_targets(single_target: bool, env_id: str, cfg: DictConfig, cfg_rl: Di
         y_targets = np.full((cfg_rl.num_envs, 1), 300)
         z_targets = np.full((cfg_rl.num_envs, 1), 600)
         targets = np.hstack((x_targets, y_targets, z_targets))
-    elif 'Altitude' in cfg_rl.env_id:
+    elif 'Altitude' in env_id:
         z_targets = np.random.uniform(550, 650, (cfg_rl.num_envs, 1))
         targets = z_targets
     # take the first sampled target if we want a single target and not a batch of targets for n envs
