@@ -6,6 +6,7 @@ import gymnasium as gym
 from envs.wrappers.multitask import MultitaskWrapper
 from envs.wrappers.pixels import PixelWrapper
 from envs.wrappers.tensor import TensorWrapper
+from omegaconf import OmegaConf
 
 def missing_dependencies(task):
 	raise ValueError(f'Missing dependencies for task {task}; install dependencies to use this environment.')
@@ -84,5 +85,7 @@ def make_env(cfg):
 		cfg.rl.obs_shape = {cfg.rl.get('obs', 'state'): env.observation_space.shape}
 	cfg.rl.action_dim = env.action_space.shape[0]
 	cfg.rl.episode_length = env.max_episode_steps
-	cfg.rl.seed_steps = max(1000, 5*cfg.rl.episode_length)
+	if OmegaConf.is_missing(cfg.rl, 'seed_steps'):
+		cfg.rl.seed_steps = max(1000, 5*cfg.rl.episode_length)
+
 	return env
