@@ -105,12 +105,13 @@ class TDMPC2:
 	def _estimate_value(self, z, actions, task):
 		"""Estimate value of a trajectory starting at latent state z and executing given actions."""
 		G, discount = 0, 1
+		terminated = torch.zeros(self.cfg.num_samples, 1, dtype=torch.float32, device=self.device)
 		for t in range(self.cfg.horizon):
 			reward = math.two_hot_inv(self.model.reward(z, actions[t], task), self.cfg)
 			z = self.model.next(z, actions[t], task)
-			G += discount * reward
+			G += discount * (1-terminated) * reward
 			discount *= self.discount[torch.tensor(task)] if self.cfg.multitask else self.discount
-		return G + discount * self.model.Q(z, self.model.pi(z, task)[1], task, return_type='avg')
+		return G + discount * (1-terminated) * self.model.Q(z, self.model.pi(z, task)[1], task, return_type='avg')
 
 	@torch.no_grad()
 	def plan(self, z, t0=False, eval_mode=False, task=None):
@@ -216,7 +217,7 @@ class TDMPC2:
 		return pi_loss.item()
 
 	@torch.no_grad()
-	def _td_target(self, next_z, reward, task):
+	def _td_target(self, next_z, reward, terminated, task):
 		"""
 		Compute the TD-target from a reward and the observation at the following time step.
 		
@@ -230,7 +231,7 @@ class TDMPC2:
 		"""
 		pi = self.model.pi(next_z, task)[1]
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
-		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
+		return reward + discount * (1-terminated) * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
 	def update(self, buffer):
 		"""
@@ -242,7 +243,7 @@ class TDMPC2:
 		Returns:
 			dict: Dictionary of training statistics.
 		"""
-		obs, action, reward, task = buffer.sample()
+		obs, action, reward, terminated, task = buffer.sample()
 		# obs: shape (horizon+1, batch_size, obs_dim), obs[0] is the current initial observation
 		# action: shape (horizon, batch_size, action_dim)
 		# reward: shape (horizon, batch_size, 1)
@@ -251,7 +252,7 @@ class TDMPC2:
 		with torch.no_grad():
 			z_buf = self.model.encode(obs, task) # get the latent state of the next observations in the horizon
 			next_z = z_buf[1:]
-			td_targets = self._td_target(next_z, reward, task)
+			td_targets = self._td_target(next_z, reward, terminated, task)
 
 		# Prepare for update
 		self.optim.zero_grad(set_to_none=True)

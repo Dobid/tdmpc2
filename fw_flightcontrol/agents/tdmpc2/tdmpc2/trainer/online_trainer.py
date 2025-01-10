@@ -17,29 +17,6 @@ class OnlineTrainer(Trainer):
 		self._step = 0
 		self._ep_idx = 0
 		self._start_time = time()
-		# reference sequence [roll, pitch] for each episode [easy, medium, hard]
-		self.ref_seq: np.ndarray = np.array([
-												[	# roll			,pitch
-													[np.deg2rad(25), np.deg2rad(15)], # easy
-													[np.deg2rad(-25), np.deg2rad(-15)],
-													[np.deg2rad(25), np.deg2rad(-15)],
-													[np.deg2rad(-25), np.deg2rad(15)]
-												],
-												[
-													[np.deg2rad(40), np.deg2rad(22)], # medium
-													[np.deg2rad(-40), np.deg2rad(-22)],
-													[np.deg2rad(40), np.deg2rad(-22)],
-													[np.deg2rad(-40), np.deg2rad(22)]
-												],
-												[
-													[np.deg2rad(55), np.deg2rad(28)], # hard
-													[np.deg2rad(-55), np.deg2rad(-28)],
-													[np.deg2rad(55), np.deg2rad(-28)],
-													[np.deg2rad(-55), np.deg2rad(28)]
-												]
-											])
-		
-
 
 	def common_metrics(self):
 		"""Return a dictionary of current metrics."""
@@ -49,7 +26,7 @@ class OnlineTrainer(Trainer):
 			total_time=time() - self._start_time,
 		)
 
-	def to_td(self, obs, action=None, reward=None):
+	def to_td(self, obs, action=None, reward=None, terminated=None):
 		"""Creates a TensorDict for a new episode."""
 		if isinstance(obs, dict):
 			obs = TensorDict(obs, batch_size=(), device='cpu')
@@ -59,10 +36,15 @@ class OnlineTrainer(Trainer):
 			action = torch.full_like(self.env.rand_act(), float('nan'))
 		if reward is None:
 			reward = torch.tensor(float('nan'))
+		if terminated is None:
+			terminated = torch.tensor(float('nan'))
+		else:
+			terminated = torch.tensor(terminated)
 		td = TensorDict(dict(
 			obs=obs,
 			action=action.unsqueeze(0),
 			reward=reward.unsqueeze(0),
+			terminated=terminated.unsqueeze(0),
 		), batch_size=(1,))
 		return td
 
@@ -90,13 +72,14 @@ class OnlineTrainer(Trainer):
 					eval_next = False
 
 				if self._step > 0:
-					train_metrics.update(
-						episode_reward=torch.tensor([td['reward'] for td in self._tds[1:]]).sum(),
-						episode_success=info['success'],
-					)
-					train_metrics.update(self.common_metrics())
-					self.logger.log(train_metrics, 'train')
-					self._ep_idx = self.buffer.add(torch.cat(self._tds))
+					if len(self._tds) > self.cfg.batch_size:
+						train_metrics.update(
+							episode_reward=torch.tensor([td['reward'] for td in self._tds[1:]]).sum(),
+							episode_success=info['success'],
+						)
+						train_metrics.update(self.common_metrics())
+						self.logger.log(train_metrics, 'train')
+						self._ep_idx = self.buffer.add(torch.cat(self._tds))
 
 				# reset the environment with training options
 				obs, info = self.env.reset(options=self.cfg_all.env.jsbsim.train_sim_options)
@@ -121,10 +104,10 @@ class OnlineTrainer(Trainer):
 				action = self.agent.act(obs, t0=len(self._tds)==1)
 			else:
 				action = self.env.rand_act()
-			obs, reward, term, trunc, info = self.env.step(action)
-			done = np.logical_or(term, trunc)
+			obs, reward, terminated, truncated, info = self.env.step(action)
+			done = np.logical_or(terminated, truncated)
 
-			self._tds.append(self.to_td(obs, action, reward))
+			self._tds.append(self.to_td(obs, action, reward, terminated))
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:
