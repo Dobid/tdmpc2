@@ -120,7 +120,7 @@ def train(cfg: DictConfig):
 
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(options=cfg_sim.train_sim_options)
-    for global_step in range(cfg_sac.total_timesteps):
+    for global_step in range(int(cfg_sac.total_timesteps)):
         if cfg_sac.track:
             wandb.log({"global_step": global_step})
 
