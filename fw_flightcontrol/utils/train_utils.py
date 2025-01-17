@@ -5,10 +5,11 @@ import gymnasium as gym
 import fw_jsbgym
 import pandas as pd
 import wandb
+from math import pi
 from fw_flightcontrol.agents.sac import Actor_SAC
 from fw_flightcontrol.agents.ppo import Agent_PPO
 from fw_flightcontrol.agents.tdmpc2.tdmpc2.tdmpc2 import TDMPC2
-from fw_flightcontrol.utils.gym_utils import MyNormalizeObservation
+from fw_flightcontrol.utils.gym_utils import MyNormalizeObservation, NormalizeObservationEnvMinMax
 from omegaconf import DictConfig, OmegaConf
 
 # Global variables
@@ -181,7 +182,7 @@ def periodic_eval_alt(env_id, ref_seq, cfg_mdp, cfg_sim, env, agent, device):
         ep_rewards.append(ep_reward)
     non_norm_obs = np.array(non_norm_obs)
     # compute RMSE of the altitude errors
-    alt_rmse = np.sqrt(np.mean(np.square(non_norm_obs[:, 1])))
+    alt_rmse = np.sqrt(np.mean(np.square(non_norm_obs[:, 0])))
 
     env.reset(options=cfg_sim.train_sim_options) # reset the env with the training options for the following of the training
     return dict(
@@ -205,14 +206,22 @@ def periodic_eval(env_id, cfg_mdp, cfg_sim, env, agent, device):
     return results
 
 
+def clip_obs(obs):
+    low_bounds = np.array([300, -300, -136, -136, -pi, -2*pi, -pi, -pi, 0, -1, 0])
+    high_bounds = np.array([900, 300, 136, 136, pi, 2*pi, pi, pi, 260, 1, 1])
+    return np.clip(obs, low_bounds, high_bounds)
+
+
 def make_env(env_id, cfg_env, render_mode, telemetry_file=None, eval=False, gamma=0.99, run_name='', idx=0):
     def thunk():
         env = gym.make(env_id, cfg_env=cfg_env, telemetry_file=telemetry_file,
                         render_mode=render_mode)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
+        # env = gym.wrappers.TransformObservation(env, clip_obs)
         # env = gym.wrappers.NormalizeObservation(env)
         # env = MyNormalizeObservation(env, eval=eval)
+        # env = NormalizeObservationEnvMinMax(env)
         if not eval:
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         return env
