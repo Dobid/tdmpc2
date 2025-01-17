@@ -21,7 +21,7 @@ class SoftQNetwork_SAC(nn.Module):
 
 
 LOG_STD_MAX = 2
-LOG_STD_MIN = -5
+LOG_STD_MIN = -5 # -10 in TDMPC2
 
 
 class Actor_SAC(nn.Module):

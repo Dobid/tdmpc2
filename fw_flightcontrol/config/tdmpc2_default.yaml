@@ -29,7 +29,7 @@ rl:
     value_coef: 0.1
     consistency_coef: 20
     decoder_coef: 1
-    rho: 0.5
+    rho: 0.5 # it's lambda in the paper
     lr: 3e-4
     enc_lr_scale: 0.3
     grad_clip_norm: 20
