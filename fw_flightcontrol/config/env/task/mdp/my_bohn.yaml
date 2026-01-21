@@ -1,5 +1,0 @@
-obs_is_matrix: False
-obs_hist_size: 5
-
-action_avg: False
-act_hist_size: 5

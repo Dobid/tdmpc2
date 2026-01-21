@@ -1,8 +1,0 @@
-name: wp_prog_xyz
-weights:
-    r_x:
-        scale: 1.25
-    r_y:
-        scale: 1.25
-    r_z:
-        scale: 7.5
