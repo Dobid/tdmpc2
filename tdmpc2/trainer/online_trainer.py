@@ -1,6 +1,7 @@
 from time import time
 
 import numpy as np
+from termcolor import colored
 import torch
 import pandas as pd
 from tensordict.tensordict import TensorDict
@@ -158,10 +159,17 @@ class OnlineTrainer(Trainer):
 
 			self._step += 1
 
-		self.logger.finish(self.agent)
-
+		# save the agent model
+		try:
+			self.logger.save_agent(self.agent)
+		except Exception as e:
+			print(colored(f"Failed to save model: {e}", "red"))
+		
 		# Final plot of a trajectory into wandb
 		if self.cfg.final_traj_plot:
 			train_utils.final_traj_plot(self.env, env_id, self.cfg_all.env.jsbsim, 
 										self.agent, self.agent.device, self.logger.exp_name)
 
+		# close wandb
+		if self.logger._wandb:
+			self.logger._wandb.finish()
