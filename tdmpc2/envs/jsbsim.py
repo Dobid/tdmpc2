@@ -13,8 +13,6 @@ def make_env(cfg):
         env = gym.wrappers.ClipAction(env)
     except:
         raise ValueError(f'Unknown task: {cfg.rl.task}')
-    # env = gym.make('SimpleAC_OMAC-v0', config_file = '../../../jsbsim_cfg.yaml', telemetry_file = 'telemetry.csv',
-    #                render_mode = 'none')
 
     print("observation space: ", env.observation_space.shape)
     print("action space: ", env.action_space.shape)
