@@ -160,10 +160,7 @@ class OnlineTrainer(Trainer):
 			self._step += 1
 
 		# save the agent model
-		try:
-			self.logger.save_agent(self.agent)
-		except Exception as e:
-			print(colored(f"Failed to save model: {e}", "red"))
+		self.logger.save_agent(self.agent)
 		
 		# Final plot of a trajectory into wandb
 		if self.cfg.final_traj_plot:
