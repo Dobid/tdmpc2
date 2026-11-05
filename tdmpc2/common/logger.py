@@ -115,6 +115,7 @@ class Logger:
 		self._group = cfg_to_group(cfg_rl)
 		self._seed = cfg_rl.seed
 		self._eval = []
+		self.exp_name = "tdmpc2_" + cfg_rl.exp_name + "_" + str(cfg_rl.seed)
 		print_run(cfg_rl)
 		self.project = cfg_rl.get("wandb_project", "none")
 		self.entity = cfg_rl.get("wandb_entity", "none")
@@ -127,8 +128,6 @@ class Logger:
 			return
 		os.environ["WANDB_SILENT"] = "true" if cfg_rl.wandb_silent else "false"
 		import wandb
-		self.exp_name = "tdmpc2_" + cfg_rl.exp_name + "_" + str(cfg_rl.seed)
-
 		wandb.init(
 			project=self.project,
 			entity=self.entity,
