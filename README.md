@@ -101,6 +101,11 @@ $ python evaluate.py task=dog-run checkpoint=/path/to/dog-1.pt save_video=true
 
 All single-task checkpoints expect `model_size=5`. Multi-task checkpoints are available in multiple model sizes. Available arguments are `model_size={1, 5, 19, 48, 317}`. Note that single-task evaluation of multi-task checkpoints is currently not supported. See `config.yaml` for a full list of arguments.
 
+FW-FlightControl also provides an opt-in `+rl.inference_mode=icinco2024`
+for ICINCO checkpoint evaluation. Current inference remains the default; the
+legacy mode does not restore historical training. Its simulator, dependency and
+configuration requirements are documented in the FlightControl reproducibility guide.
+
 ### Training
 
 See below examples on how to train TD-MPC**2** on a single task (online RL) and on multi-task datasets (offline RL). We recommend configuring [Weights and Biases](https://wandb.ai) (`wandb`) in `config.yaml` to track training progress.

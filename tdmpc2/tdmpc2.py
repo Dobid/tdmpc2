@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+
+import numpy as np
 import torch
 import torch.nn.functional as F
 import sys
@@ -23,8 +26,36 @@ class TDMPC2(torch.nn.Module):
 	def __init__(self, cfg):
 		super().__init__()
 		self.cfg = cfg
+		self.inference_mode = getattr(cfg, 'inference_mode', 'current')
+		if self.inference_mode not in {'current', 'icinco2024'}:
+			raise ValueError(f'Unknown TD-MPC2 inference mode: {self.inference_mode!r}')
+		if self.inference_mode == 'icinco2024':
+			unsupported = [
+				name for name in ('compile', 'episodic', 'model_free', 'mppi_actfluct',
+								  'use_decoder', 'gaussian_dyn', 'multitask')
+				if getattr(cfg, name, False)
+			]
+			if not cfg.mpc:
+				unsupported.append('mpc=false')
+			if not cfg.use_enc:
+				unsupported.append('use_enc=false')
+			if cfg.obs != 'state':
+				unsupported.append(f'obs={cfg.obs}')
+			if cfg.num_q != 5:
+				unsupported.append(f'num_q={cfg.num_q}')
+			if cfg.dropout != 0.01:
+				unsupported.append(f'dropout={cfg.dropout}')
+			if unsupported:
+				raise ValueError('icinco2024 does not support: ' + ', '.join(unsupported))
+		print('Inference mode:', self.inference_mode)
 		self.device = torch.device('cuda:0')
 		self.model = WorldModel(cfg).to(self.device)
+		self._legacy_dropouts = ()
+		if self.inference_mode == 'icinco2024':
+			dropouts = tuple(m for m in self.model._Qs.modules() if isinstance(m, torch.nn.Dropout))
+			if len(dropouts) != 1 or dropouts[0].p != cfg.dropout:
+				raise RuntimeError('Unexpected critic dropout architecture for icinco2024')
+			self._legacy_dropouts = dropouts
 		self.optim = torch.optim.Adam([
 			{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 			{'params': self.model._decoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale} if self.cfg.use_decoder else {'params': []},
@@ -105,6 +136,19 @@ class TDMPC2(torch.nn.Module):
 		self.model.load_state_dict(state_dict)
 		return
 
+	@contextmanager
+	def _legacy_critic_dropout(self):
+		states = [(dropout, dropout.training, dropout.inplace) for dropout in self._legacy_dropouts]
+		try:
+			for dropout, _, _ in states:
+				dropout.train(True)
+				dropout.inplace = True
+			yield
+		finally:
+			for dropout, training, inplace in states:
+				dropout.train(training)
+				dropout.inplace = inplace
+
 	@torch.no_grad()
 	def act(self, obs, t0=False, eval_mode=False, task=None):
 		"""
@@ -127,6 +171,9 @@ class TDMPC2(torch.nn.Module):
 		if task is not None:
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
+			if eval_mode and self.inference_mode == 'icinco2024':
+				with self._legacy_critic_dropout():
+					return self.plan(obs, t0=t0, eval_mode=True, task=task).cpu()
 			return self.plan(obs, t0=t0, eval_mode=eval_mode, task=task).cpu()
 		z = self.model.encode(obs, task)
 		action, info = self.model.pi(z, task)
@@ -135,7 +182,7 @@ class TDMPC2(torch.nn.Module):
 		return action[0].cpu()
 
 	@torch.no_grad()
-	def _estimate_value(self, z, actions, task):
+	def _estimate_value(self, z, actions, task, legacy_inference=False):
 		"""Estimate value of a trajectory starting at latent state z and executing given actions."""
 		G, discount = 0, 1
 		termination = torch.zeros(self.cfg.num_samples, 1, dtype=torch.float32, device=z.device)
@@ -147,8 +194,15 @@ class TDMPC2(torch.nn.Module):
 			discount = discount * discount_update
 			if self.cfg.episodic:
 				termination = torch.clip(termination + (self.model.termination(z, task) > 0.5).float(), max=1.)
-		action, _ = self.model.pi(z, task)
-		return G + discount * (1-termination) * self.model.Q(z, action, task, return_type='avg')
+		action, info = self.model.pi(z, task)
+		if legacy_inference:
+			action = info['mean']
+			out = self.model.Q(z, action, task, return_type='all')
+			q1, q2 = out[np.random.choice(self.cfg.num_q, 2, replace=False)]
+			value = (math.two_hot_inv(q1, self.cfg) + math.two_hot_inv(q2, self.cfg)) / 2
+		else:
+			value = self.model.Q(z, action, task, return_type='avg')
+		return G + discount * (1-termination) * value
 
 	@torch.no_grad()
 	def _plan(self, obs, t0=False, eval_mode=False, task=None):
@@ -164,15 +218,18 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: Action to take in the environment.
 		"""
+		legacy_inference = eval_mode and self.inference_mode == 'icinco2024'
 		# Sample policy trajectories
 		z = self.model.encode(obs, task)
 		if self.cfg.num_pi_trajs > 0:
 			pi_actions = torch.empty(self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
 			_z = z.repeat(self.cfg.num_pi_trajs, 1)
 			for t in range(self.cfg.horizon-1):
-				pi_actions[t], _ = self.model.pi(_z, task)
+				action, info = self.model.pi(_z, task)
+				pi_actions[t] = info['mean'] if legacy_inference else action
 				_z = self.model.next(_z, pi_actions[t], task)
-			pi_actions[-1], _ = self.model.pi(_z, task)
+			action, info = self.model.pi(_z, task)
+			pi_actions[-1] = info['mean'] if legacy_inference else action
 
 		# Initialize state and parameters
 		z = z.repeat(self.cfg.num_samples, 1)
@@ -196,7 +253,7 @@ class TDMPC2(torch.nn.Module):
 				actions = actions * self.model._action_masks[task]
 
 			# Compute elite actions
-			value = self._estimate_value(z, actions, task).nan_to_num(0)
+			value = self._estimate_value(z, actions, task, legacy_inference).nan_to_num(0)
 			act_fluct = torch.zeros(1, self.cfg.num_samples, device=self.device)
 			if self.cfg.mppi_actfluct:
 				for a_idx in range(self.cfg.action_dim):
@@ -216,7 +273,12 @@ class TDMPC2(torch.nn.Module):
 				std = std * self.model._action_masks[task]
 
 		# Select action
-		rand_idx = math.gumbel_softmax_sample(score.squeeze(1))
+		if legacy_inference:
+			probabilities = score.squeeze(1)
+			index = np.random.choice(np.arange(probabilities.shape[0]), p=probabilities.cpu().numpy())
+			rand_idx = torch.tensor(index, dtype=torch.long, device=probabilities.device)
+		else:
+			rand_idx = math.gumbel_softmax_sample(score.squeeze(1))
 		actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
 		a, std = actions[0], std[0]
 		if not eval_mode:
